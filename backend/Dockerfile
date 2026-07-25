@@ -5,6 +5,10 @@ WORKDIR /src
 
 RUN apk add --no-cache ca-certificates git
 
+ENV GOPRIVATE=github.com/lrndwy/gokil
+ENV GONOSUMCHECK=github.com/lrndwy/gokil
+ENV GONOSUMDB=github.com/lrndwy/gokil
+
 COPY go.mod go.sum ./
 RUN go mod download
 
