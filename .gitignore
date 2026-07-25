@@ -55,3 +55,4 @@ coverage/
 *.key
 storage/
 !frontend/**/storage/
+!backend/app/storage/
