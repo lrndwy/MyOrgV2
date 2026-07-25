@@ -7,8 +7,7 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
 # All services communicate via Docker internal network.
-# Only the frontend (port 3000) is exposed to the host (or your reverse proxy).
-# No database, Redis, MinIO, OCR, or backend ports are exposed to the host.
+# No ports are exposed to the host — route traffic via reverse proxy.
 # =============================================================================
 
 services:
@@ -19,9 +18,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     env_file:
-      - .env
-    ports:
-      - "3000:3000"
+      - ./frontend/.env.prod
+    expose:
+      - "3000"
     depends_on:
       - gokil
     restart: unless-stopped
@@ -36,7 +35,7 @@ services:
       args:
         PROJECT: backend
     env_file:
-      - .env
+      - ./backend/.env.prod
     depends_on:
       db:
         condition: service_healthy
@@ -55,7 +54,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     env_file:
-      - .env
+      - ./backend/.env.prod
     environment:
       POSTGRES_USER: ${GOKIL_DB_USER}
       POSTGRES_PASSWORD: ${GOKIL_DB_PASSWORD}
