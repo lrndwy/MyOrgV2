@@ -330,6 +330,14 @@ func (RoleService) Delete(ctx context.Context, id int64) error {
 	if role.IsSystem {
 		return fmt.Errorf("cannot delete system role")
 	}
+	count, err := orm.Objects[models.User](ctx).Filter("role_id", id).Count()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("role masih digunakan oleh %d anggota", count)
+	}
+	orm.Objects[models.RolePermission](ctx).Filter("role_id", id).Delete()
 	_, err = orm.DeleteByID[models.Role](ctx, id)
 	return err
 }
