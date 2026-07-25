@@ -62,10 +62,9 @@ func DELETE(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(400, "invalid id")
 		}
-		u, err := services.UserService{}.SoftDelete(c.Request.Context(), id)
-		if err != nil {
+		if err := (services.UserService{}).Delete(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
-		return c.Success(200, "user deleted", u)
+		return c.Success(200, "user deleted", nil)
 	})(ctx)
 }

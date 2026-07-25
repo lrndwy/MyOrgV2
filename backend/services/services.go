@@ -217,8 +217,9 @@ func (UserService) Update(ctx context.Context, id int64, values map[string]any) 
 	return orm.UpdateByID[models.User](ctx, id, values)
 }
 
-func (UserService) SoftDelete(ctx context.Context, id int64) (*models.User, error) {
-	return orm.UpdateByID[models.User](ctx, id, map[string]any{"status": "deleted"})
+func (UserService) Delete(ctx context.Context, id int64) error {
+	_, err := orm.DeleteByID[models.User](ctx, id)
+	return err
 }
 
 func (UserService) ChangePassword(ctx context.Context, id int64, newPassword string) error {
@@ -323,13 +324,6 @@ func (RoleService) Update(ctx context.Context, id int64, values map[string]any) 
 }
 
 func (RoleService) Delete(ctx context.Context, id int64) error {
-	role, err := orm.GetByID[models.Role](ctx, id)
-	if err != nil {
-		return err
-	}
-	if role.IsSystem {
-		return fmt.Errorf("cannot delete system role")
-	}
 	count, err := orm.Objects[models.User](ctx).Filter("role_id", id).Count()
 	if err != nil {
 		return err
@@ -1175,6 +1169,33 @@ func (LetterService) BulkDelete(ctx context.Context, ids []int64) int {
 
 type StorageService struct{}
 
+func (StorageService) ListFolders(ctx context.Context) ([]*models.StorageFolder, error) {
+	return orm.Objects[models.StorageFolder](ctx).OrderBy("name").All()
+}
+
+func (StorageService) CreateFolder(ctx context.Context, f *models.StorageFolder) (*models.StorageFolder, error) {
+	return orm.Create(ctx, f)
+}
+
+func (StorageService) DeleteFolder(ctx context.Context, id int64) error {
+	children, err := orm.Objects[models.StorageFolder](ctx).Filter("parent_id", id).Count()
+	if err != nil {
+		return err
+	}
+	if children > 0 {
+		return fmt.Errorf("folder masih berisi subfolder")
+	}
+	fileCount, err := orm.Objects[models.StorageFile](ctx).Filter("folder_id", id).Count()
+	if err != nil {
+		return err
+	}
+	if fileCount > 0 {
+		return fmt.Errorf("folder masih berisi %d file", fileCount)
+	}
+	_, err = orm.DeleteByID[models.StorageFolder](ctx, id)
+	return err
+}
+
 func (StorageService) ListFiles(ctx context.Context, folderID *int64) ([]*models.StorageFile, error) {
 	qs := orm.Objects[models.StorageFile](ctx)
 	if folderID != nil {
@@ -1189,10 +1210,5 @@ func (StorageService) CreateFile(ctx context.Context, f *models.StorageFile) (*m
 
 func (StorageService) DeleteFile(ctx context.Context, id int64) error {
 	_, err := orm.DeleteByID[models.StorageFile](ctx, id)
-	return err
-}
-
-func (StorageService) DeleteFolder(ctx context.Context, id int64) error {
-	_, err := orm.DeleteByID[models.StorageFolder](ctx, id)
 	return err
 }
