@@ -22,7 +22,9 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 
 COPY --from=build /out/app /app/app
+COPY docker-entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8080
-ENTRYPOINT ["/app/app"]
-CMD ["serve"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD []

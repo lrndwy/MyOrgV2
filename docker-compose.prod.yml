@@ -18,7 +18,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     env_file:
-      - .env
+      - ./frontend/.env.prod
     expose:
       - "3000"
     depends_on:
@@ -35,7 +35,7 @@ services:
       args:
         PROJECT: backend
     env_file:
-      - .env
+      - ./backend/.env.prod
     depends_on:
       db:
         condition: service_healthy
@@ -54,7 +54,7 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     env_file:
-      - .env
+      - ./backend/.env.prod
     environment:
       POSTGRES_USER: ${GOKIL_DB_USER}
       POSTGRES_PASSWORD: ${GOKIL_DB_PASSWORD}
