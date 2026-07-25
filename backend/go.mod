@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/lrndwy/gokil v0.9.0
+	github.com/lrndwy/gokil v0.9.1
 	golang.org/x/crypto v0.54.0
 )
 
@@ -36,5 +36,3 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )
-
-replace github.com/lrndwy/gokil => /Users/lrndwy/MyProjects/gokil
