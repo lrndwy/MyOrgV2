@@ -53,6 +53,4 @@ coverage/
 # Misc
 *.pem
 *.key
-storage/
-!frontend/**/storage/
-!backend/app/storage/
+/storage/
