@@ -133,25 +133,44 @@ func MustUser(ctx *views.Context) (*User, error) {
 
 func SetTokenCookie(ctx *views.Context, token string) {
 	secure := os.Getenv("GOKIL_ENV") == "production"
-	http.SetCookie(ctx.Writer, &http.Cookie{
+	sameSite := http.SameSiteLaxMode
+	if secure {
+		sameSite = http.SameSiteNoneMode
+	}
+	cookie := &http.Cookie{
 		Name:     "token",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: sameSite,
 		Secure:   secure,
 		MaxAge:   7 * 24 * 3600,
-	})
+	}
+	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
+		cookie.Domain = d
+	}
+	http.SetCookie(ctx.Writer, cookie)
 }
 
 func ClearTokenCookie(ctx *views.Context) {
-	http.SetCookie(ctx.Writer, &http.Cookie{
+	secure := os.Getenv("GOKIL_ENV") == "production"
+	sameSite := http.SameSiteLaxMode
+	if secure {
+		sameSite = http.SameSiteNoneMode
+	}
+	cookie := &http.Cookie{
 		Name:     "token",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		SameSite: sameSite,
+		Secure:   secure,
 		MaxAge:   -1,
-	})
+	}
+	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
+		cookie.Domain = d
+	}
+	http.SetCookie(ctx.Writer, cookie)
 }
 
 func RequireAuth(next views.Handler) views.Handler {
