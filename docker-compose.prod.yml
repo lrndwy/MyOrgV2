@@ -17,13 +17,13 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_USE_DIRECT_API: ${NEXT_PUBLIC_USE_DIRECT_API}
     env_file:
       - .env
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_USE_DIRECT_API: ${NEXT_PUBLIC_USE_DIRECT_API}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
     expose:
       - "3000"
     depends_on:
