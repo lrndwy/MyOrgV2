@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "${GOKIL_DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${GOKIL_DB_USER:-backend}
+      POSTGRES_PASSWORD: ${GOKIL_DB_PASSWORD:-gokil}
+      POSTGRES_DB: ${GOKIL_DB_NAME:-backend}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GOKIL_DB_USER:-backend} -d ${GOKIL_DB_NAME:-backend}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${GOKIL_REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${GOKIL_STORAGE_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${GOKIL_STORAGE_SECRET_ACCESS_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+  ocr:
+    build:
+      context: ./ocr
+    restart: unless-stopped
+    ports:
+      - "${OCR_PORT:-8090}:8090"
+    environment:
+      OCR_LANG: ${OCR_LANG:-ind+eng}
+      OCR_PDF_DPI: ${OCR_PDF_DPI:-200}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  db_data:
+  redis_data:
+  minio_data:

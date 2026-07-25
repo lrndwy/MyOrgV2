@@ -1,0 +1,94 @@
+services:
+
+  gokil:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT: backend
+    env_file:
+      - .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ocr:
+        condition: service_healthy
+    environment:
+      OCR_SERVICE_URL: http://ocr:8090
+    restart: unless-stopped
+    networks:
+      - internal
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      POSTGRES_USER: ${GOKIL_DB_USER}
+      POSTGRES_PASSWORD: ${GOKIL_DB_PASSWORD}
+      POSTGRES_DB: ${GOKIL_DB_NAME}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GOKIL_DB_USER} -d ${GOKIL_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      MINIO_ROOT_USER: ${GOKIL_STORAGE_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${GOKIL_STORAGE_SECRET_ACCESS_KEY}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - internal
+
+  ocr:
+    build:
+      context: ./ocr
+    restart: unless-stopped
+    environment:
+      OCR_LANG: ${OCR_LANG:-ind+eng}
+      OCR_PDF_DPI: ${OCR_PDF_DPI:-200}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - internal
+
+volumes:
+  db_data:
+  redis_data:
+  minio_data:
+
+networks:
+  internal:
+    driver: bridge
