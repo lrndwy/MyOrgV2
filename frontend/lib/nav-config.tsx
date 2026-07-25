@@ -7,6 +7,7 @@ import {
   DatabaseBackupIcon,
   FileTextIcon,
   LayoutDashboardIcon,
+  LayoutPanelLeftIcon,
   MailIcon,
   MegaphoneIcon,
   SettingsIcon,
@@ -130,6 +131,14 @@ export const adminNavItems: NavItem[] = [
     url: "/admin/storage",
     icon: <CloudIcon className="size-4" />,
     permission: "storage.view",
+  },
+]
+
+export const adminSecondaryNav: NavItem[] = [
+  {
+    title: "Panel Anggota",
+    url: "/dashboard",
+    icon: <LayoutPanelLeftIcon className="size-4" />,
   },
 ]
 

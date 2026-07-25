@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { CameraIcon, Loader2Icon } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { ErrorState, LoadingState } from "@/components/page-states"
+import { useAuth } from "@/components/providers/auth-provider"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -53,6 +54,7 @@ type PasswordForm = z.infer<typeof passwordSchema>
 
 export default function ProfilePage() {
   const { data: user, loading, error, setData } = useApi(getMe)
+  const { refresh: refreshAuth } = useAuth()
   const [saving, setSaving] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
@@ -97,6 +99,7 @@ export default function ProfilePage() {
         body,
       })
       setData({ ...user!, avatar_url: result.avatar_url })
+      await refreshAuth()
       toast.success("Foto profil berhasil diperbarui")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal mengunggah foto")

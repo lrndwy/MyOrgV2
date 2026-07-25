@@ -2,7 +2,7 @@
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { adminNavItems } from "@/lib/nav-config"
+import { adminNavItems, adminSecondaryNav } from "@/lib/nav-config"
 
 export default function AdminLayout({
   children,
@@ -11,7 +11,11 @@ export default function AdminLayout({
 }) {
   return (
     <SidebarProvider>
-      <AppSidebar navItems={adminNavItems} menuVariant="admin" />
+      <AppSidebar
+        navItems={adminNavItems}
+        secondaryItems={adminSecondaryNav}
+        menuVariant="admin"
+      />
       <SidebarInset>{children}</SidebarInset>
     </SidebarProvider>
   )
