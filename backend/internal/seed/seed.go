@@ -49,6 +49,7 @@ var permissionDefs = []struct {
 	{"finance.edit", "finance", "Edit finance transactions"},
 	{"finance.delete", "finance", "Delete finance transactions"},
 	{"finance.categories.manage", "finance", "Manage finance categories"},
+	{"finance.wallets.manage", "finance", "Manage finance wallets"},
 	{"storage.view", "storage", "View storage"},
 	{"storage.upload", "storage", "Upload files"},
 	{"storage.delete", "storage", "Delete files"},

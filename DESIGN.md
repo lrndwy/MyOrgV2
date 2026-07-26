@@ -191,6 +191,17 @@ Placeholder: `{NOMOR_SURAT}`, `{NAMA_ORGANISASI}`, … Alias legacy `{NOMOR}` / 
 ### 2.12 Keuangan (Bendahara)
 **FinanceCategory**, **FinanceTransaction** — permission `finance.*`. Endpoint summary/dashboard kustom.
 
+**Wallet** (sumber dana: kas tunai, rekening bank, e-wallet):
+
+| Field | Tipe | Catatan |
+|---|---|---|
+| `name` | string | wajib |
+| `description` | text | opsional |
+| `initial_balance` | float | saldo awal |
+| `is_active` | boolean | wallet nonaktif disembunyikan dari form transaksi |
+
+`FinanceTransaction.wallet_id` nullable FK → wallets (`ON DELETE SET NULL`). Saldo wallet = `initial_balance` + pemasukan − pengeluaran (dihitung service, bukan kolom). Endpoint: `GET/POST /wallets`, `PUT/DELETE /wallets/:id`; saldo per wallet ikut di `GET /finance_transactions/dashboard`. Permission: `finance.view` (lihat), `finance.wallets.manage` (kelola). Wallet dengan transaksi tidak bisa dihapus.
+
 ### 2.13 Catatan ORM
 - Relasi: `orm.BelongsTo`, `orm.HasMany`, `orm.ManyMany` (FK `int64`).
 - Field JSON: `json.RawMessage` + `type:json` (bukan `map[string]any` mentah).
@@ -253,7 +264,7 @@ function RequirePermission(ctx, code):
     return 403
 ```
 
-Permission awal: `settings.manage`, `users.view/create/edit/delete/import`, `roles.view/create/edit/delete`, `events.view/create/edit/delete`, `attendance.submit/approve`, `divisions.view/create/edit/delete`, `permission.submit`, `violations.view/manage`, `recruitment.manage`, `letters.view/manage`, `announcement.create`, `finance.view/create/edit/delete/categories/manage`, `storage.view/upload/delete/manage`.
+Permission awal: `settings.manage`, `users.view/create/edit/delete/import`, `roles.view/create/edit/delete`, `events.view/create/edit/delete`, `attendance.submit/approve`, `divisions.view/create/edit/delete`, `permission.submit`, `violations.view/manage`, `recruitment.manage`, `letters.view/manage`, `announcement.create`, `finance.view/create/edit/delete/categories/manage`, `finance.wallets.manage`, `storage.view/upload/delete/manage`.
 
 Role **Bendahara** seed: semua `finance.*`.
 

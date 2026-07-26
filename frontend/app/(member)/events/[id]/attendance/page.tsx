@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/page-header"
+import { LoadingState } from "@/components/page-states"
 import { WebcamCapture } from "@/components/webcam-capture"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -15,7 +16,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { useApi } from "@/hooks/use-api"
 import { apiRequest } from "@/lib/api"
+import type { Event } from "@/lib/types"
 
 function fillCanvasWhite(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext("2d")
@@ -76,7 +79,15 @@ export default function EventAttendancePage({
   const [drawing, setDrawing] = useState(false)
   const [selfie, setSelfie] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const { data: event, loading: eventLoading } = useApi(
+    () => apiRequest<Event>(`/events/${id}`),
+    [id]
+  )
+  const alreadyAttended = Boolean(event?.my_attendance_status)
+  const notOngoing = Boolean(event) && event?.status !== "ongoing"
 
+  // Canvas baru dirender setelah status event dimuat, jadi efek ini harus
+  // ikut bergantung pada kondisi yang menentukan form tampil atau tidak.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -88,7 +99,7 @@ export default function EventAttendancePage({
     })
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [])
+  }, [eventLoading, alreadyAttended, notOngoing])
 
   function startDraw(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current
@@ -171,6 +182,40 @@ export default function EventAttendancePage({
         ]}
       />
       <div className="flex flex-1 flex-col gap-4 p-4 pt-0">
+        {eventLoading ? <LoadingState rows={3} /> : null}
+
+        {!eventLoading && alreadyAttended ? (
+          <Alert>
+            <AlertTitle>Anda sudah tercatat di event ini</AlertTitle>
+            <AlertDescription>
+              Status absensi Anda: {event?.my_attendance_status}. Absensi hanya
+              dapat dilakukan satu kali.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {!eventLoading && !alreadyAttended && notOngoing ? (
+          <Alert>
+            <AlertTitle>Absensi belum dibuka</AlertTitle>
+            <AlertDescription>
+              Absensi hanya bisa dilakukan saat event sedang berlangsung.
+              Status event saat ini: {event?.status}.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {!eventLoading && (alreadyAttended || notOngoing) ? (
+          <Button
+            variant="outline"
+            className="w-fit"
+            render={<Link href={`/events/${id}`} />}
+          >
+            Kembali ke detail event
+          </Button>
+        ) : null}
+
+        {eventLoading || alreadyAttended || notOngoing ? null : (
+        <>
         <Alert>
           <AlertTitle>Selfie via Kamera</AlertTitle>
           <AlertDescription>
@@ -230,6 +275,8 @@ export default function EventAttendancePage({
             </Button>
           </div>
         </form>
+        </>
+        )}
       </div>
     </>
   )

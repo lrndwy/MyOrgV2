@@ -350,7 +350,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
     setForm({
       subject: letter.subject ?? "",
       letter_code: letter.letter_code ?? "",
-      sender: (letter as any).sender ?? "",
+      sender: letter.sender ?? "",
       template_id: "",
       category_id: letter.category_id ? String(letter.category_id) : "",
     })

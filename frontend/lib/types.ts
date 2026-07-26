@@ -68,6 +68,7 @@ export interface Event {
   banner_url?: string | null
   banner_image_url?: string | null
   my_attendance_status?: string | null
+  my_permission_request_status?: string | null
 }
 
 export interface Attendance {
@@ -181,6 +182,8 @@ export interface Letter {
   type: "incoming" | "outgoing" | string
   letter_code?: string
   subject?: string
+  sender?: string | null
+  recipient?: string | null
   category_id?: number
   category?: LetterCategory
   attachment_url?: string | null
@@ -194,10 +197,24 @@ export interface FinanceCategory {
   type?: string
 }
 
+export interface Wallet {
+  id: number
+  name: string
+  description?: string | null
+  initial_balance?: number
+  is_active?: boolean
+  total_income?: number
+  total_expense?: number
+  balance?: number
+  transaction_count?: number
+  created_at?: string
+}
+
 export interface FinanceTransaction {
   id: number
   category_id?: number
   category?: FinanceCategory
+  wallet_id?: number | null
   amount: number
   type: "income" | "expense" | string
   description?: string | null
@@ -240,6 +257,7 @@ export interface FinanceSummary {
 export interface FinanceDashboard {
   summary?: FinanceSummary
   recent_transactions?: FinanceTransaction[]
+  wallets?: Wallet[]
 }
 
 export interface Paginated<T> {

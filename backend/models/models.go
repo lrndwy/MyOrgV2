@@ -30,6 +30,7 @@ func init() {
 		&Announcement{},
 		&AnnouncementAttachment{},
 		&FinanceCategory{},
+		&Wallet{},
 		&FinanceTransaction{},
 		&PushSubscription{},
 		&StorageFolder{},
@@ -264,10 +265,20 @@ type FinanceCategory struct {
 	Description string `orm:"text" json:"description"`
 }
 
+type Wallet struct {
+	orm.BaseModel
+	Name           string  `orm:"required,size:100" json:"name"`
+	Description    string  `orm:"text" json:"description"`
+	InitialBalance float64 `orm:"default:0" json:"initial_balance"`
+	IsActive       bool    `orm:"default:true" json:"is_active"`
+}
+
 type FinanceTransaction struct {
 	orm.BaseModel
 	Category        orm.BelongsTo[FinanceCategory] `orm:"required" json:"-"`
 	CategoryID      int64                          `orm:"index" json:"category_id"`
+	Wallet          orm.BelongsTo[Wallet]          `json:"-"`
+	WalletID        *int64                         `orm:"null,index" json:"wallet_id"`
 	Type            string                         `orm:"size:20" json:"type"`
 	Amount          float64                        `json:"amount"`
 	Description     string                         `orm:"text" json:"description"`

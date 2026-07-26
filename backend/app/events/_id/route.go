@@ -26,7 +26,7 @@ func GET(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(400, "invalid id")
 		}
-		e, err := services.EventService{}.Get(c.Request.Context(), id)
+		e, err := services.EventService{}.GetForUser(c.Request.Context(), id, user.ID)
 		if err != nil {
 			return c.NotFound()
 		}

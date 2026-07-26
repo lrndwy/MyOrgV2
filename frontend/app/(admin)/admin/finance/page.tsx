@@ -27,10 +27,12 @@ import type {
   FinanceCategory,
   FinanceDashboard,
   FinanceTransaction,
+  Wallet,
 } from "@/lib/types"
 
 type TxForm = {
   category_id: string
+  wallet_id: string
   type: string
   amount: string
   description: string
@@ -39,10 +41,25 @@ type TxForm = {
 
 const EMPTY_FORM: TxForm = {
   category_id: "",
+  wallet_id: "",
   type: "",
   amount: "",
   description: "",
   transaction_date: "",
+}
+
+type WalletForm = {
+  name: string
+  description: string
+  initial_balance: string
+  is_active: boolean
+}
+
+const EMPTY_WALLET_FORM: WalletForm = {
+  name: "",
+  description: "",
+  initial_balance: "",
+  is_active: true,
 }
 
 export default function AdminFinancePage() {
@@ -60,6 +77,9 @@ export default function AdminFinancePage() {
       "/finance_categories"
     ).then(unwrapList)
   )
+  const wallets = useApi(() =>
+    apiRequest<Wallet[] | { items: Wallet[] }>("/wallets").then(unwrapList)
+  )
 
   const [open, setOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -73,6 +93,10 @@ export default function AdminFinancePage() {
   const [catEditId, setCatEditId] = useState<number | null>(null)
   const [deleteTxId, setDeleteTxId] = useState<number | null>(null)
   const [deleteCatId, setDeleteCatId] = useState<number | null>(null)
+  const [walletOpen, setWalletOpen] = useState(false)
+  const [walletEditId, setWalletEditId] = useState<number | null>(null)
+  const [walletForm, setWalletForm] = useState<WalletForm>(EMPTY_WALLET_FORM)
+  const [deleteWalletId, setDeleteWalletId] = useState<number | null>(null)
 
   const catList = useMemo(() => {
     const fromTx = txData.data?.categories
@@ -86,6 +110,21 @@ export default function AdminFinancePage() {
   const catMap = useMemo(
     () => new Map(catList.map((c) => [c.id, c])),
     [catList]
+  )
+
+  const walletList = useMemo(() => wallets.data ?? [], [wallets.data])
+  const walletMap = useMemo(
+    () => new Map(walletList.map((w) => [w.id, w])),
+    [walletList]
+  )
+  const walletOptions = useMemo(
+    () => [
+      { value: "", label: "Tanpa wallet" },
+      ...walletList
+        .filter((w) => w.is_active !== false)
+        .map((w) => ({ value: String(w.id), label: w.name })),
+    ],
+    [walletList]
   )
 
   const stats = useMemo(
@@ -144,6 +183,7 @@ export default function AdminFinancePage() {
     try {
       const body = new FormData()
       body.append("category_id", form.category_id)
+      if (form.wallet_id) body.append("wallet_id", form.wallet_id)
       body.append("type", form.type)
       body.append("amount", form.amount)
       body.append("description", form.description)
@@ -167,6 +207,7 @@ export default function AdminFinancePage() {
     setEditId(tx.id)
     setForm({
       category_id: String(tx.category_id ?? ""),
+      wallet_id: tx.wallet_id ? String(tx.wallet_id) : "",
       type: tx.type ?? "",
       amount: String(tx.amount ?? ""),
       description: tx.description ?? "",
@@ -186,6 +227,7 @@ export default function AdminFinancePage() {
         method: "PUT",
         body: {
           category_id: Number(form.category_id),
+          wallet_id: form.wallet_id ? Number(form.wallet_id) : null,
           type: form.type,
           amount: Number(form.amount),
           description: form.description,
@@ -262,6 +304,65 @@ export default function AdminFinancePage() {
     }
   }
 
+  function openCreateWallet() {
+    setWalletEditId(null)
+    setWalletForm(EMPTY_WALLET_FORM)
+    setWalletOpen(true)
+  }
+
+  function openEditWallet(w: Wallet) {
+    setWalletEditId(w.id)
+    setWalletForm({
+      name: w.name,
+      description: w.description ?? "",
+      initial_balance: String(w.initial_balance ?? 0),
+      is_active: w.is_active !== false,
+    })
+    setWalletOpen(true)
+  }
+
+  async function handleSaveWallet() {
+    setSaving(true)
+    try {
+      const body = {
+        name: walletForm.name,
+        description: walletForm.description,
+        initial_balance: Number(walletForm.initial_balance) || 0,
+        is_active: walletForm.is_active,
+      }
+      if (walletEditId == null) {
+        await apiRequest("/wallets", { method: "POST", body })
+        toast.success("Wallet ditambahkan")
+      } else {
+        await apiRequest(`/wallets/${walletEditId}`, { method: "PUT", body })
+        toast.success("Wallet diperbarui")
+      }
+      setWalletOpen(false)
+      setWalletEditId(null)
+      setWalletForm(EMPTY_WALLET_FORM)
+      void wallets.refetch()
+      void summary.refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menyimpan wallet")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDeleteWallet() {
+    if (deleteWalletId == null) return
+    try {
+      await apiRequest(`/wallets/${deleteWalletId}`, { method: "DELETE" })
+      toast.success("Wallet dihapus")
+      void wallets.refetch()
+      void summary.refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus wallet")
+    } finally {
+      setDeleteWalletId(null)
+    }
+  }
+
   async function handleDeleteCategory() {
     if (deleteCatId == null) return
     try {
@@ -309,6 +410,12 @@ export default function AdminFinancePage() {
         header: "Kategori",
       },
       {
+        id: "wallet",
+        accessorFn: (row) =>
+          row.wallet_id ? walletMap.get(row.wallet_id)?.name ?? "-" : "-",
+        header: "Wallet",
+      },
+      {
         id: "deskripsi",
         accessorKey: "description",
         header: "Deskripsi",
@@ -347,7 +454,7 @@ export default function AdminFinancePage() {
         ),
       },
     ],
-    [catMap]
+    [catMap, walletMap]
   )
 
   return (
@@ -363,6 +470,7 @@ export default function AdminFinancePage() {
       <Tabs defaultValue="transactions">
         <TabsList>
           <TabsTrigger value="transactions">Transaksi</TabsTrigger>
+          <TabsTrigger value="wallets">Wallet</TabsTrigger>
           <TabsTrigger value="categories">Kategori</TabsTrigger>
         </TabsList>
         <TabsContent value="transactions" className="mt-4">
@@ -375,6 +483,79 @@ export default function AdminFinancePage() {
             searchPlaceholder="Cari transaksi..."
             getRowId={(row) => String(row.id)}
           />
+        </TabsContent>
+        <TabsContent value="wallets" className="mt-4 space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={openCreateWallet}>
+              <PlusIcon data-icon="inline-start" />
+              Tambah Wallet
+            </Button>
+          </div>
+          {walletList.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              Belum ada wallet. Buat wallet (mis. Kas Tunai, Rekening Bank)
+              untuk melacak saldo per sumber dana.
+            </p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {walletList.map((w) => (
+                <div key={w.id} className="rounded-lg border p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium">
+                        {w.name}
+                        {w.is_active === false ? (
+                          <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                            Nonaktif
+                          </span>
+                        ) : null}
+                      </p>
+                      {w.description ? (
+                        <p className="text-xs text-muted-foreground">
+                          {w.description}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditWallet(w)}
+                      >
+                        <PencilIcon className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDeleteWalletId(w.id)}
+                      >
+                        <Trash2Icon className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-2xl font-semibold tabular-nums">
+                    {formatCurrency(w.balance ?? 0)}
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <p>
+                      Masuk:{" "}
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        {formatCurrency(w.total_income ?? 0)}
+                      </span>
+                    </p>
+                    <p>
+                      Keluar:{" "}
+                      <span className="text-red-600 dark:text-red-400">
+                        {formatCurrency(w.total_expense ?? 0)}
+                      </span>
+                    </p>
+                    <p>Saldo awal: {formatCurrency(w.initial_balance ?? 0)}</p>
+                    <p>{w.transaction_count ?? 0} transaksi</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="categories" className="mt-4 space-y-4">
           <div className="flex justify-end">
@@ -448,6 +629,15 @@ export default function AdminFinancePage() {
             />
           </Field>
           <Field>
+            <FieldLabel>Wallet</FieldLabel>
+            <FormSelect
+              value={form.wallet_id}
+              onValueChange={(v) => setForm({ ...form, wallet_id: v })}
+              options={walletOptions}
+              placeholder="Tanpa wallet"
+            />
+          </Field>
+          <Field>
             <FieldLabel>Jumlah</FieldLabel>
             <Input
               type="number"
@@ -517,6 +707,15 @@ export default function AdminFinancePage() {
               placeholder={
                 form.type ? "Pilih kategori" : "Pilih tipe terlebih dahulu"
               }
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Wallet</FieldLabel>
+            <FormSelect
+              value={form.wallet_id}
+              onValueChange={(v) => setForm({ ...form, wallet_id: v })}
+              options={walletOptions}
+              placeholder="Tanpa wallet"
             />
           </Field>
           <Field>
@@ -635,6 +834,73 @@ export default function AdminFinancePage() {
           </Field>
         </FieldGroup>
       </FormDialog>
+
+      <FormDialog
+        open={walletOpen}
+        onOpenChange={setWalletOpen}
+        title={walletEditId == null ? "Wallet Baru" : "Edit Wallet"}
+        onSubmit={handleSaveWallet}
+        saving={saving}
+      >
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Nama</FieldLabel>
+            <Input
+              value={walletForm.name}
+              onChange={(e) =>
+                setWalletForm({ ...walletForm, name: e.target.value })
+              }
+              placeholder="mis. Kas Tunai, Rekening BCA"
+              required
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Deskripsi</FieldLabel>
+            <Input
+              value={walletForm.description}
+              onChange={(e) =>
+                setWalletForm({ ...walletForm, description: e.target.value })
+              }
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Saldo Awal</FieldLabel>
+            <Input
+              type="number"
+              value={walletForm.initial_balance}
+              onChange={(e) =>
+                setWalletForm({
+                  ...walletForm,
+                  initial_balance: e.target.value,
+                })
+              }
+            />
+          </Field>
+          {walletEditId != null ? (
+            <Field>
+              <FieldLabel>Status</FieldLabel>
+              <FormSelect
+                value={walletForm.is_active ? "active" : "inactive"}
+                onValueChange={(v) =>
+                  setWalletForm({ ...walletForm, is_active: v === "active" })
+                }
+                options={[
+                  { value: "active", label: "Aktif" },
+                  { value: "inactive", label: "Nonaktif" },
+                ]}
+              />
+            </Field>
+          ) : null}
+        </FieldGroup>
+      </FormDialog>
+
+      <ConfirmDialog
+        open={deleteWalletId != null}
+        onOpenChange={(v) => { if (!v) setDeleteWalletId(null) }}
+        title="Hapus Wallet"
+        description="Wallet hanya bisa dihapus jika tidak memiliki transaksi. Lanjutkan?"
+        onConfirm={handleDeleteWallet}
+      />
 
       <ConfirmDialog
         open={deleteTxId != null}

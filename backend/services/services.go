@@ -13,6 +13,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/letterutil"
 	"backend/internal/storageutil"
+	"backend/internal/timeutil"
 	"backend/models"
 
 	"github.com/lrndwy/gokil/orm"
@@ -106,6 +107,10 @@ func userPayload(ctx context.Context, u *models.User) map[string]any {
 		"id": u.ID, "username": u.Username, "email": u.Email,
 		"full_name": u.FullName, "avatar_url": u.AvatarURL,
 		"division_id": u.DivisionID, "role_id": u.RoleID, "status": u.Status,
+		"hometown": u.Hometown, "phone": u.Phone,
+	}
+	if u.BirthDate != nil {
+		out["birth_date"] = u.BirthDate.Format("2006-01-02")
 	}
 	if role, err := orm.GetByID[models.Role](ctx, u.RoleID); err == nil {
 		out["role"] = role.Name
@@ -250,6 +255,9 @@ func (UserService) UploadAvatar(ctx context.Context, id int64, file multipart.Fi
 
 func (UserService) ImportCSV(ctx context.Context, rows []map[string]string) (success int, failures []map[string]string) {
 	for _, row := range rows {
+		if strings.TrimSpace(row["username"]) == "" && strings.TrimSpace(row["email"]) == "" {
+			continue // baris kosong sisa spreadsheet
+		}
 		divName := row["division"]
 		divs, _ := orm.Objects[models.Division](ctx).Filter("name", divName).All()
 		if len(divs) == 0 {
@@ -445,6 +453,32 @@ func (EventService) Get(ctx context.Context, id int64) (*models.Event, error) {
 		return nil, err
 	}
 	return (EventService{}).syncEventStatus(ctx, e)
+}
+
+// GetForUser melengkapi detail event dengan status absensi dan status
+// pengajuan izin milik user yang sedang login.
+func (EventService) GetForUser(ctx context.Context, id, userID int64) (map[string]any, error) {
+	e, err := (EventService{}).Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(e)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, err
+	}
+	if att, err := orm.Objects[models.Attendance](ctx).
+		Filter("event_id", id).Filter("user_id", userID).First(); err == nil && att != nil {
+		out["my_attendance_status"] = att.Status
+	}
+	if pr, err := orm.Objects[models.PermissionRequest](ctx).
+		Filter("event_id", id).Filter("user_id", userID).OrderBy("-id").First(); err == nil && pr != nil {
+		out["my_permission_request_status"] = pr.Status
+	}
+	return out, nil
 }
 
 func (EventService) Create(ctx context.Context, e *models.Event) (*models.Event, error) {
@@ -1006,6 +1040,85 @@ func (FinanceService) DeleteTransaction(ctx context.Context, id int64) error {
 	return err
 }
 
+// walletBalances menghitung saldo tiap wallet: initial_balance + pemasukan - pengeluaran.
+func (FinanceService) walletBalances(ctx context.Context) ([]map[string]any, error) {
+	wallets, err := orm.Objects[models.Wallet](ctx).OrderBy("name").All()
+	if err != nil {
+		return nil, err
+	}
+	txs, err := FinanceService{}.ListTransactions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cats, err := FinanceService{}.ListCategories(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catType := map[int64]string{}
+	for _, c := range cats {
+		catType[c.ID] = c.Type
+	}
+	income := map[int64]float64{}
+	expense := map[int64]float64{}
+	count := map[int64]int{}
+	for _, t := range txs {
+		if t.WalletID == nil {
+			continue
+		}
+		txType := t.Type
+		if txType == "" {
+			txType = catType[t.CategoryID]
+		}
+		if txType == "income" {
+			income[*t.WalletID] += t.Amount
+		} else {
+			expense[*t.WalletID] += t.Amount
+		}
+		count[*t.WalletID]++
+	}
+	out := make([]map[string]any, len(wallets))
+	for i, w := range wallets {
+		out[i] = map[string]any{
+			"id":                w.ID,
+			"name":              w.Name,
+			"description":       w.Description,
+			"initial_balance":   w.InitialBalance,
+			"is_active":         w.IsActive,
+			"total_income":      income[w.ID],
+			"total_expense":     expense[w.ID],
+			"balance":           w.InitialBalance + income[w.ID] - expense[w.ID],
+			"transaction_count": count[w.ID],
+			"created_at":        w.CreatedAt,
+			"updated_at":        w.UpdatedAt,
+		}
+	}
+	return out, nil
+}
+
+func (FinanceService) ListWallets(ctx context.Context) ([]map[string]any, error) {
+	return FinanceService{}.walletBalances(ctx)
+}
+
+func (FinanceService) CreateWallet(ctx context.Context, w *models.Wallet) (*models.Wallet, error) {
+	return orm.Create(ctx, w)
+}
+
+func (FinanceService) UpdateWallet(ctx context.Context, id int64, values map[string]any) (*models.Wallet, error) {
+	return orm.UpdateByID[models.Wallet](ctx, id, values)
+}
+
+func (FinanceService) DeleteWallet(ctx context.Context, id int64) error {
+	count, err := orm.Objects[models.FinanceTransaction](ctx).Filter("wallet_id", id).Count()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("wallet masih memiliki %d transaksi; pindahkan atau hapus transaksinya dulu", count)
+	}
+	_, err = orm.DeleteByID[models.Wallet](ctx, id)
+	return err
+}
+
 func (FinanceService) Summary(ctx context.Context) (map[string]float64, error) {
 	txs, err := FinanceService{}.ListTransactions(ctx)
 	if err != nil {
@@ -1039,7 +1152,8 @@ func (FinanceService) Dashboard(ctx context.Context) (map[string]any, error) {
 	if len(txs) > 10 {
 		txs = txs[:10]
 	}
-	return map[string]any{"summary": summary, "recent": txs}, nil
+	wallets, _ := FinanceService{}.walletBalances(ctx)
+	return map[string]any{"summary": summary, "recent": txs, "wallets": wallets}, nil
 }
 
 type ProfileService struct{}
@@ -1053,10 +1167,29 @@ func (ProfileService) Get(ctx context.Context, userID int64) (map[string]any, er
 }
 
 func (ProfileService) Update(ctx context.Context, userID int64, values map[string]any) (*models.User, error) {
-	delete(values, "password_hash")
-	delete(values, "role_id")
-	delete(values, "status")
-	return orm.UpdateByID[models.User](ctx, userID, values)
+	allowed := map[string]bool{"full_name": true, "birth_date": true, "hometown": true, "phone": true}
+	clean := map[string]any{}
+	for k, v := range values {
+		if allowed[k] {
+			clean[k] = v
+		}
+	}
+	if v, ok := clean["birth_date"]; ok {
+		s, _ := v.(string)
+		if s == "" {
+			clean["birth_date"] = nil
+		} else {
+			t, err := timeutil.ParseFlexible(s)
+			if err != nil {
+				return nil, fmt.Errorf("invalid birth_date")
+			}
+			clean["birth_date"] = t
+		}
+	}
+	if len(clean) == 0 {
+		return orm.GetByID[models.User](ctx, userID)
+	}
+	return orm.UpdateByID[models.User](ctx, userID, clean)
 }
 
 func (ProfileService) ChangePassword(ctx context.Context, userID int64, oldPwd, newPwd string) error {

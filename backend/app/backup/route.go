@@ -11,10 +11,8 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/permission"
-	"backend/models"
 	"backend/services"
 
-	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
 )
 
@@ -26,41 +24,23 @@ func POST(ctx *views.Context) error {
 	return auth.RequireAuth(importBackup)(ctx)
 }
 
+func storageRootPath() string {
+	root := os.Getenv("GOKIL_STORAGE_LOCAL_PATH")
+	if root == "" {
+		root = "storage"
+	}
+	return root
+}
+
 func exportBackup(ctx *views.Context) error {
 	user, _ := auth.CurrentUser(ctx.Request.Context())
 	ok, _ := permission.UserHas(ctx, user, "backup.manage")
 	if !ok {
 		return ctx.Error(403, "forbidden")
 	}
-	reqCtx := ctx.Request.Context()
-	payload := map[string]any{}
-	tables := []struct {
-		key string
-		fn  func() (any, error)
-	}{
-		{"permissions", func() (any, error) { return orm.Objects[models.Permission](reqCtx).All() }},
-		{"roles", func() (any, error) { return orm.Objects[models.Role](reqCtx).All() }},
-		{"role_permissions", func() (any, error) { return orm.Objects[models.RolePermission](reqCtx).All() }},
-		{"divisions", func() (any, error) { return orm.Objects[models.Division](reqCtx).All() }},
-		{"letter_categories", func() (any, error) { return orm.Objects[models.LetterCategory](reqCtx).All() }},
-		{"letter_templates", func() (any, error) { return orm.Objects[models.LetterTemplate](reqCtx).All() }},
-		{"organization_settings", func() (any, error) { return orm.Objects[models.OrganizationSettings](reqCtx).All() }},
-		{"users", func() (any, error) { return orm.Objects[models.User](reqCtx).All() }},
-		{"events", func() (any, error) { return orm.Objects[models.Event](reqCtx).All() }},
-		{"letters", func() (any, error) { return orm.Objects[models.Letter](reqCtx).All() }},
-		{"announcements", func() (any, error) { return orm.Objects[models.Announcement](reqCtx).All() }},
-		{"finance_categories", func() (any, error) { return orm.Objects[models.FinanceCategory](reqCtx).All() }},
-		{"finance_transactions", func() (any, error) { return orm.Objects[models.FinanceTransaction](reqCtx).All() }},
-		{"violation_types", func() (any, error) { return orm.Objects[models.ViolationType](reqCtx).All() }},
-		{"storage_folders", func() (any, error) { return orm.Objects[models.StorageFolder](reqCtx).All() }},
-		{"storage_files", func() (any, error) { return orm.Objects[models.StorageFile](reqCtx).All() }},
-	}
-	for _, t := range tables {
-		data, err := t.fn()
-		if err != nil {
-			return ctx.Error(500, err.Error())
-		}
-		payload[t.key] = data
+	payload, err := services.BackupService{}.ExportJSON(ctx.Request.Context())
+	if err != nil {
+		return ctx.Error(500, err.Error())
 	}
 	raw, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -75,10 +55,7 @@ func exportBackup(ctx *views.Context) error {
 	if _, err := w.Write(raw); err != nil {
 		return ctx.Error(500, err.Error())
 	}
-	storageRoot := os.Getenv("GOKIL_STORAGE_LOCAL_PATH")
-	if storageRoot == "" {
-		storageRoot = "storage"
-	}
+	storageRoot := storageRootPath()
 	_ = filepath.Walk(storageRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
@@ -131,9 +108,9 @@ func importBackup(ctx *views.Context) error {
 	if err != nil {
 		return ctx.Error(400, "invalid zip")
 	}
-	storageRoot := os.Getenv("GOKIL_STORAGE_LOCAL_PATH")
-	if storageRoot == "" {
-		storageRoot = "storage"
+	storageRoot, err := filepath.Abs(storageRootPath())
+	if err != nil {
+		return ctx.Error(500, err.Error())
 	}
 	filesRestored := 0
 	var dataJSON []byte
@@ -147,11 +124,16 @@ func importBackup(ctx *views.Context) error {
 			continue
 		}
 		if strings.HasPrefix(f.Name, "storage/") {
+			rel := strings.TrimPrefix(f.Name, "storage/")
+			dest := filepath.Join(storageRoot, filepath.FromSlash(rel))
+			// Tolak entry zip yang mencoba keluar dari storage root (zip-slip).
+			if dest != storageRoot && !strings.HasPrefix(dest, storageRoot+string(os.PathSeparator)) {
+				continue
+			}
 			rc, err := f.Open()
 			if err != nil {
 				continue
 			}
-			dest := filepath.Join(storageRoot, filepath.FromSlash(strings.TrimPrefix(f.Name, "storage/")))
 			_ = os.MkdirAll(filepath.Dir(dest), 0o755)
 			out, err := os.Create(dest)
 			if err == nil {
@@ -166,14 +148,17 @@ func importBackup(ctx *views.Context) error {
 	dbStats := map[string]int{}
 	if len(dataJSON) > 0 {
 		var payload map[string]json.RawMessage
-		if err := json.Unmarshal(dataJSON, &payload); err == nil {
-			dbStats, err = services.BackupService{}.RestoreJSON(ctx.Request.Context(), payload)
-			if err != nil {
-				return ctx.Error(500, err.Error())
-			}
+		if err := json.Unmarshal(dataJSON, &payload); err != nil {
+			return ctx.Error(400, "data.json tidak valid: "+err.Error())
+		}
+		dbStats, err = services.BackupService{}.RestoreJSON(ctx.Request.Context(), payload)
+		if err != nil {
+			return ctx.Error(500, err.Error())
 		}
 	}
 
+	services.LogActivity(ctx.Request.Context(), user.ID, "restore", "backup", 0,
+		"Memulihkan backup sistem", ctx.Request.RemoteAddr)
 	return ctx.Success(200, "backup restored", map[string]any{
 		"files_restored": filesRestored,
 		"database":       dbStats,

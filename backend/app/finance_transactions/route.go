@@ -41,6 +41,7 @@ func POST(ctx *views.Context) error {
 		}
 
 		var categoryID int64
+		var walletID *int64
 		var txType string
 		var amount float64
 		var description, dateRaw, receiptURL string
@@ -51,6 +52,11 @@ func POST(ctx *views.Context) error {
 				return c.Error(400, err.Error())
 			}
 			categoryID, _ = models.ParseID(c.Request.FormValue("category_id"))
+			if v := c.Request.FormValue("wallet_id"); v != "" {
+				if wid, err := models.ParseID(v); err == nil && wid > 0 {
+					walletID = &wid
+				}
+			}
 			txType = c.Request.FormValue("type")
 			if v := c.Request.FormValue("amount"); v != "" {
 				amount, _ = strconv.ParseFloat(v, 64)
@@ -74,6 +80,7 @@ func POST(ctx *views.Context) error {
 		} else {
 			var body struct {
 				CategoryID      int64   `json:"category_id"`
+				WalletID        *int64  `json:"wallet_id"`
 				Type            string  `json:"type"`
 				Amount          float64 `json:"amount"`
 				Description     string  `json:"description"`
@@ -83,6 +90,9 @@ func POST(ctx *views.Context) error {
 				return c.Error(400, err.Error())
 			}
 			categoryID = body.CategoryID
+			if body.WalletID != nil && *body.WalletID > 0 {
+				walletID = body.WalletID
+			}
 			txType = body.Type
 			amount = body.Amount
 			description = body.Description
@@ -101,7 +111,7 @@ func POST(ctx *views.Context) error {
 			td = time.Now()
 		}
 		t, err := services.FinanceService{}.CreateTransaction(c.Request.Context(), &models.FinanceTransaction{
-			CategoryID: categoryID, Type: txType, Amount: amount, Description: description,
+			CategoryID: categoryID, WalletID: walletID, Type: txType, Amount: amount, Description: description,
 			ReceiptURL: receiptURL, TransactionDate: td, CreatedByID: user.ID,
 		})
 		if err != nil {
