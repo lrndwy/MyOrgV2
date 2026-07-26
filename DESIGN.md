@@ -370,6 +370,10 @@ backups/{date}-{id}.zip
 
 - Validasi MIME & ukuran di service sebelum upload.
 - Admin: manajemen file organisasi (folder virtual) — permission `storage.*`.
+  - `DELETE /storage/folders/:id` menghapus folder **rekursif** (subfolder + file + objek fisik di provider).
+  - `PUT /storage/files/:id` body `{folder_id}` memindahkan file antar folder (null = root) — dipakai drag & drop di UI.
+  - `DELETE /storage/files/:id` juga menghapus objek fisik di provider (best-effort).
+  - Tampilan default browser storage hanya menampilkan isi root; isi folder dimuat saat folder dibuka.
 - Web anggota: tidak ada halaman storage terpisah.
 - Wiring: `storage.New(settings.Storage)` sekali di bootstrap; jangan `NewS3` per request.
 

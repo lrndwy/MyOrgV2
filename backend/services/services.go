@@ -1324,20 +1324,26 @@ func (StorageService) CreateFolder(ctx context.Context, f *models.StorageFolder)
 	return orm.Create(ctx, f)
 }
 
+// DeleteFolder menghapus folder beserta seluruh isinya (subfolder dan file)
+// secara rekursif.
 func (StorageService) DeleteFolder(ctx context.Context, id int64) error {
-	children, err := orm.Objects[models.StorageFolder](ctx).Filter("parent_id", id).Count()
+	children, err := orm.Objects[models.StorageFolder](ctx).Filter("parent_id", id).All()
 	if err != nil {
 		return err
 	}
-	if children > 0 {
-		return fmt.Errorf("folder masih berisi subfolder")
+	for _, child := range children {
+		if err := (StorageService{}).DeleteFolder(ctx, child.ID); err != nil {
+			return err
+		}
 	}
-	fileCount, err := orm.Objects[models.StorageFile](ctx).Filter("folder_id", id).Count()
+	files, err := orm.Objects[models.StorageFile](ctx).Filter("folder_id", id).All()
 	if err != nil {
 		return err
 	}
-	if fileCount > 0 {
-		return fmt.Errorf("folder masih berisi %d file", fileCount)
+	for _, f := range files {
+		if err := (StorageService{}).DeleteFile(ctx, f.ID); err != nil {
+			return err
+		}
 	}
 	_, err = orm.DeleteByID[models.StorageFolder](ctx, id)
 	return err
@@ -1356,8 +1362,32 @@ func (StorageService) CreateFile(ctx context.Context, f *models.StorageFile) (*m
 }
 
 func (StorageService) DeleteFile(ctx context.Context, id int64) error {
-	_, err := orm.DeleteByID[models.StorageFile](ctx, id)
+	f, err := orm.GetByID[models.StorageFile](ctx, id)
+	if err != nil {
+		return err
+	}
+	// Best-effort: hapus juga objek fisiknya dari storage provider.
+	if key := StorageKeyFromURL(f.FileURL); key != "" {
+		if p := storageutil.Provider(); p != nil {
+			_ = p.Delete(ctx, key)
+		}
+	}
+	_, err = orm.DeleteByID[models.StorageFile](ctx, id)
 	return err
+}
+
+// MoveFile memindahkan file ke folder lain (nil = root).
+func (StorageService) MoveFile(ctx context.Context, id int64, folderID *int64) (*models.StorageFile, error) {
+	if folderID != nil {
+		if _, err := orm.GetByID[models.StorageFolder](ctx, *folderID); err != nil {
+			return nil, fmt.Errorf("folder tujuan tidak ditemukan")
+		}
+	}
+	values := map[string]any{"folder_id": nil}
+	if folderID != nil {
+		values["folder_id"] = *folderID
+	}
+	return orm.UpdateByID[models.StorageFile](ctx, id, values)
 }
 
 type ActivityLogService struct{}

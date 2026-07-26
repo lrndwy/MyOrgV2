@@ -58,6 +58,7 @@ import (
 	app_storage_files "backend/app/storage/files"
 	app_storage_files_id "backend/app/storage/files/_id"
 	app_storage_folders "backend/app/storage/folders"
+	app_storage_folders_id "backend/app/storage/folders/_id"
 	app_users "backend/app/users"
 	app_users_id "backend/app/users/_id"
 	app_users_id_avatar "backend/app/users/_id/avatar"
@@ -155,9 +156,11 @@ func init() {
 	framework.RegisterRoute("PUT", "/settings", app_settings.PUT)
 	framework.RegisterRoute("GET", "/storage/files", app_storage_files.GET)
 	framework.RegisterRoute("POST", "/storage/files", app_storage_files.POST)
+	framework.RegisterRoute("PUT", "/storage/files/:id", app_storage_files_id.PUT)
 	framework.RegisterRoute("DELETE", "/storage/files/:id", app_storage_files_id.DELETE)
 	framework.RegisterRoute("GET", "/storage/folders", app_storage_folders.GET)
 	framework.RegisterRoute("POST", "/storage/folders", app_storage_folders.POST)
+	framework.RegisterRoute("DELETE", "/storage/folders/:id", app_storage_folders_id.DELETE)
 	framework.RegisterRoute("GET", "/users", app_users.GET)
 	framework.RegisterRoute("POST", "/users", app_users.POST)
 	framework.RegisterRoute("GET", "/users/:id", app_users_id.GET)

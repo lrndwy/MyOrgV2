@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { FormDialog } from "@/components/advanced-table/form-dialog"
+import { ConfirmDialog } from "@/components/confirm-dialog"
 import { FilePreviewDialog } from "@/components/file-preview-dialog"
 import { ErrorState, LoadingState } from "@/components/page-states"
 import { Badge } from "@/components/ui/badge"
@@ -77,6 +78,14 @@ import { cn } from "@/lib/utils"
 
 type ViewMode = "grid" | "list"
 
+// Tipe data khusus untuk drag & drop internal (pindah file antar folder),
+// dibedakan dari drag file OS (upload).
+const FILE_DRAG_TYPE = "application/x-myorg-file-id"
+
+function isInternalDrag(e: React.DragEvent) {
+  return e.dataTransfer.types.includes(FILE_DRAG_TYPE)
+}
+
 function buildFolderMap(folders: StorageFolder[]) {
   const byParent = new Map<number | null, StorageFolder[]>()
   for (const folder of folders) {
@@ -111,12 +120,17 @@ function FolderTree({
   folders,
   currentFolderId,
   onSelect,
+  onDropFile,
 }: {
   folders: StorageFolder[]
   currentFolderId: number | null
   onSelect: (id: number | null) => void
+  onDropFile: (fileId: number, folderId: number | null) => void
 }) {
   const byParent = useMemo(() => buildFolderMap(folders), [folders])
+  const [dropTargetId, setDropTargetId] = useState<number | null | undefined>(
+    undefined
+  )
 
   function Node({
     folder,
@@ -135,11 +149,29 @@ function FolderTree({
         <button
           type="button"
           onClick={() => onSelect(id)}
+          onDragOver={(e) => {
+            if (!isInternalDrag(e)) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = "move"
+            setDropTargetId(id)
+          }}
+          onDragLeave={() => {
+            setDropTargetId((prev) => (prev === id ? undefined : prev))
+          }}
+          onDrop={(e) => {
+            if (!isInternalDrag(e)) return
+            e.preventDefault()
+            e.stopPropagation()
+            setDropTargetId(undefined)
+            const fileId = Number(e.dataTransfer.getData(FILE_DRAG_TYPE))
+            if (fileId) onDropFile(fileId, id)
+          }}
           className={cn(
             "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors",
             isActive
               ? "bg-primary/10 font-medium text-primary"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            dropTargetId === id && "ring-2 ring-primary"
           )}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
@@ -177,6 +209,9 @@ export function CloudStorageBrowser() {
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [previewFile, setPreviewFile] = useState<StorageFile | null>(null)
+  const [deleteFolderTarget, setDeleteFolderTarget] =
+    useState<StorageFolder | null>(null)
+  const [dropFolderId, setDropFolderId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const folders = useApi(() =>
@@ -208,18 +243,28 @@ export function CloudStorageBrowser() {
     return list.filter((f) => f.name.toLowerCase().includes(q))
   }, [allFolders, currentFolderId, search])
 
+  // Di root hanya file tanpa folder yang ditampilkan; isi folder muncul
+  // saat foldernya dibuka.
+  const scopedFiles = useMemo(() => {
+    const list = files.data ?? []
+    if (currentFolderId == null) {
+      return list.filter((f) => f.folder_id == null)
+    }
+    return list
+  }, [files.data, currentFolderId])
+
   const visibleFiles = useMemo(() => {
-    let list = files.data ?? []
+    let list = scopedFiles
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter((f) => f.name.toLowerCase().includes(q))
     }
     return sortStorageFiles(list, sortKey, sortDesc)
-  }, [files.data, search, sortKey, sortDesc])
+  }, [scopedFiles, search, sortKey, sortDesc])
 
   const totalSize = useMemo(
-    () => (files.data ?? []).reduce((sum, f) => sum + (f.size_bytes ?? 0), 0),
-    [files.data]
+    () => scopedFiles.reduce((sum, f) => sum + (f.size_bytes ?? 0), 0),
+    [scopedFiles]
   )
 
   const refreshAll = useCallback(() => {
@@ -280,6 +325,39 @@ export function CloudStorageBrowser() {
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  async function moveFile(fileId: number, folderId: number | null) {
+    try {
+      await apiRequest(`/storage/files/${fileId}`, {
+        method: "PUT",
+        body: { folder_id: folderId },
+      })
+      toast.success("File dipindahkan")
+      void files.refetch()
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal memindahkan file"
+      )
+    }
+  }
+
+  async function deleteFolder() {
+    if (!deleteFolderTarget) return
+    try {
+      await apiRequest(`/storage/folders/${deleteFolderTarget.id}`, {
+        method: "DELETE",
+      })
+      toast.success(`Folder "${deleteFolderTarget.name}" dihapus`)
+      if (currentFolderId === deleteFolderTarget.id) {
+        setCurrentFolderId(deleteFolderTarget.parent_id ?? null)
+      }
+      refreshAll()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus folder")
+    } finally {
+      setDeleteFolderTarget(null)
     }
   }
 
@@ -446,7 +524,7 @@ export function CloudStorageBrowser() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">File di folder ini</p>
-              <p className="text-xl font-semibold">{files.data?.length ?? 0}</p>
+              <p className="text-xl font-semibold">{scopedFiles.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -565,6 +643,19 @@ export function CloudStorageBrowser() {
                   type="button"
                   className="inline-flex items-center gap-1"
                   onClick={() => setCurrentFolderId(null)}
+                  onDragOver={(e) => {
+                    if (!isInternalDrag(e)) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = "move"
+                  }}
+                  onDrop={(e) => {
+                    if (!isInternalDrag(e)) return
+                    e.preventDefault()
+                    const fileId = Number(
+                      e.dataTransfer.getData(FILE_DRAG_TYPE)
+                    )
+                    if (fileId) void moveFile(fileId, null)
+                  }}
                 />
               }
             >
@@ -604,6 +695,7 @@ export function CloudStorageBrowser() {
             folders={allFolders}
             currentFolderId={currentFolderId}
             onSelect={setCurrentFolderId}
+            onDropFile={(fileId, folderId) => void moveFile(fileId, folderId)}
           />
         </aside>
 
@@ -613,6 +705,7 @@ export function CloudStorageBrowser() {
             dragOver && "ring-2 ring-primary ring-offset-2"
           )}
           onDragOver={(e) => {
+            if (isInternalDrag(e)) return // pindah file ditangani drop target folder
             e.preventDefault()
             setDragOver(true)
           }}
@@ -623,6 +716,7 @@ export function CloudStorageBrowser() {
             }
           }}
           onDrop={(e) => {
+            if (isInternalDrag(e)) return
             e.preventDefault()
             setDragOver(false)
             void uploadFiles(e.dataTransfer.files)
@@ -652,11 +746,43 @@ export function CloudStorageBrowser() {
                     {viewMode === "grid" ? (
                       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         {visibleFolders.map((folder) => (
-                          <button
+                          <div
                             key={folder.id}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             onClick={() => setCurrentFolderId(folder.id)}
-                            className="group flex items-center gap-3 rounded-xl border bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault()
+                                setCurrentFolderId(folder.id)
+                              }
+                            }}
+                            onDragOver={(e) => {
+                              if (!isInternalDrag(e)) return
+                              e.preventDefault()
+                              e.dataTransfer.dropEffect = "move"
+                              setDropFolderId(folder.id)
+                            }}
+                            onDragLeave={() =>
+                              setDropFolderId((prev) =>
+                                prev === folder.id ? null : prev
+                              )
+                            }
+                            onDrop={(e) => {
+                              if (!isInternalDrag(e)) return
+                              e.preventDefault()
+                              e.stopPropagation()
+                              setDropFolderId(null)
+                              const fileId = Number(
+                                e.dataTransfer.getData(FILE_DRAG_TYPE)
+                              )
+                              if (fileId) void moveFile(fileId, folder.id)
+                            }}
+                            className={cn(
+                              "group flex cursor-pointer items-center gap-3 rounded-xl border bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40",
+                              dropFolderId === folder.id &&
+                                "border-primary ring-2 ring-primary/40"
+                            )}
                           >
                             <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
                               <FolderIcon className="size-6 text-amber-600" />
@@ -664,11 +790,42 @@ export function CloudStorageBrowser() {
                             <div className="min-w-0 flex-1">
                               <p className="truncate font-medium">{folder.name}</p>
                               <p className="text-xs text-muted-foreground">
-                                Klik untuk buka
+                                Klik untuk buka · tarik file ke sini
                               </p>
                             </div>
-                            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                          </button>
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger
+                                  render={
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      aria-label={`Aksi folder ${folder.name}`}
+                                    />
+                                  }
+                                >
+                                  <MoreVerticalIcon className="size-4" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => setCurrentFolderId(folder.id)}
+                                  >
+                                    <ChevronRightIcon className="size-4" />
+                                    Buka
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onClick={() => setDeleteFolderTarget(folder)}
+                                  >
+                                    <Trash2Icon className="size-4" />
+                                    Hapus Folder
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -677,14 +834,40 @@ export function CloudStorageBrowser() {
                           <TableRow>
                             <TableHead>Nama</TableHead>
                             <TableHead className="w-[120px]">Tipe</TableHead>
+                            <TableHead className="w-[60px]" />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {visibleFolders.map((folder) => (
                             <TableRow
                               key={folder.id}
-                              className="cursor-pointer"
+                              className={cn(
+                                "cursor-pointer",
+                                dropFolderId === folder.id &&
+                                  "bg-primary/10 outline-2 outline-primary"
+                              )}
                               onClick={() => setCurrentFolderId(folder.id)}
+                              onDragOver={(e) => {
+                                if (!isInternalDrag(e)) return
+                                e.preventDefault()
+                                e.dataTransfer.dropEffect = "move"
+                                setDropFolderId(folder.id)
+                              }}
+                              onDragLeave={() =>
+                                setDropFolderId((prev) =>
+                                  prev === folder.id ? null : prev
+                                )
+                              }
+                              onDrop={(e) => {
+                                if (!isInternalDrag(e)) return
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setDropFolderId(null)
+                                const fileId = Number(
+                                  e.dataTransfer.getData(FILE_DRAG_TYPE)
+                                )
+                                if (fileId) void moveFile(fileId, folder.id)
+                              }}
                             >
                               <TableCell>
                                 <div className="flex items-center gap-2">
@@ -694,6 +877,17 @@ export function CloudStorageBrowser() {
                               </TableCell>
                               <TableCell className="text-muted-foreground">
                                 Folder
+                              </TableCell>
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={`Hapus folder ${folder.name}`}
+                                  onClick={() => setDeleteFolderTarget(folder)}
+                                >
+                                  <Trash2Icon className="size-4" />
+                                </Button>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -713,7 +907,15 @@ export function CloudStorageBrowser() {
                         {visibleFiles.map((file) => (
                           <div
                             key={file.id}
-                            className="group flex flex-col overflow-hidden rounded-xl border bg-background transition-shadow hover:shadow-md"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData(
+                                FILE_DRAG_TYPE,
+                                String(file.id)
+                              )
+                              e.dataTransfer.effectAllowed = "move"
+                            }}
+                            className="group flex cursor-grab flex-col overflow-hidden rounded-xl border bg-background transition-shadow hover:shadow-md active:cursor-grabbing"
                           >
                             <button
                               type="button"
@@ -760,6 +962,14 @@ export function CloudStorageBrowser() {
                             return (
                               <TableRow
                                 key={file.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData(
+                                    FILE_DRAG_TYPE,
+                                    String(file.id)
+                                  )
+                                  e.dataTransfer.effectAllowed = "move"
+                                }}
                                 className="cursor-pointer"
                                 onClick={() => setPreviewFile(file)}
                               >
@@ -858,6 +1068,16 @@ export function CloudStorageBrowser() {
           required
         />
       </FormDialog>
+
+      <ConfirmDialog
+        open={deleteFolderTarget != null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteFolderTarget(null)
+        }}
+        title={`Hapus Folder "${deleteFolderTarget?.name ?? ""}"`}
+        description="Folder beserta SELURUH subfolder dan file di dalamnya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan."
+        onConfirm={deleteFolder}
+      />
 
       <FilePreviewDialog
         open={previewFile != null}
