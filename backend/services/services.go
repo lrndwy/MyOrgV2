@@ -994,9 +994,17 @@ func (AnnouncementService) Update(ctx context.Context, id int64, values map[stri
 	return orm.UpdateByID[models.Announcement](ctx, id, values)
 }
 
+// Delete menghapus announcement beserta lampirannya dalam satu transaksi —
+// tidak bergantung pada ON DELETE CASCADE di level database.
 func (AnnouncementService) Delete(ctx context.Context, id int64) error {
-	_, err := orm.DeleteByID[models.Announcement](ctx, id)
-	return err
+	return orm.WithTx(ctx, func(txCtx context.Context, _ *orm.Tx) error {
+		if _, err := orm.Objects[models.AnnouncementAttachment](txCtx).
+			Filter("announcement_id", id).Delete(); err != nil {
+			return err
+		}
+		_, err := orm.DeleteByID[models.Announcement](txCtx, id)
+		return err
+	})
 }
 
 func (AnnouncementService) GetAttachments(ctx context.Context, announcementID int64) ([]*models.AnnouncementAttachment, error) {
