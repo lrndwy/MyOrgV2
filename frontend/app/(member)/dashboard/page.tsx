@@ -6,7 +6,9 @@ import {
   CalendarIcon,
   ClipboardListIcon,
   MegaphoneIcon,
+  ShieldAlertIcon,
 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ScheduleCalendar } from "@/components/member/schedule-calendar"
 import { PageHeader } from "@/components/page-header"
 import {
@@ -26,7 +28,12 @@ import {
 import { useApi } from "@/hooks/use-api"
 import { apiRequest } from "@/lib/api"
 import { formatDate, unwrapList } from "@/lib/format"
-import type { Announcement, Event, PermissionRequest } from "@/lib/types"
+import type {
+  Announcement,
+  Event,
+  PermissionRequest,
+  Violation,
+} from "@/lib/types"
 
 export default function DashboardPage() {
   const events = useApi(async () => {
@@ -48,6 +55,14 @@ export default function DashboardPage() {
       .slice(0, 3)
   })
 
+  const violations = useApi(async () => {
+    const data = await apiRequest<Violation[] | { items: Violation[] }>(
+      "/violations/me"
+    )
+    return unwrapList(data)
+  })
+  const spCount = (violations.data ?? []).filter((v) => v.sp_level).length
+
   const upcoming = (events.data ?? [])
     .filter((e) => e.status === "upcoming" || e.status === "ongoing")
     .slice(0, 4)
@@ -56,6 +71,19 @@ export default function DashboardPage() {
     <>
       <PageHeader title="Dashboard" />
       <div className="flex flex-1 flex-col gap-6 p-4 pt-0">
+        {spCount > 0 ? (
+          <Alert variant="destructive">
+            <ShieldAlertIcon />
+            <AlertTitle>
+              Anda memiliki {spCount} surat peringatan (SP) aktif
+            </AlertTitle>
+            <AlertDescription>
+              <Link href="/my-violations" className="underline">
+                Lihat detail pelanggaran Anda
+              </Link>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {events.loading ? <LoadingState rows={4} /> : null}
         {events.error ? <ErrorState message={events.error} /> : null}
         {!events.loading && !events.error ? (

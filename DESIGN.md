@@ -173,6 +173,8 @@ Admin UI: `/admin/settings` (form singleton), bukan CRUD list.
 ### 2.8 Violation
 `user_id`, `issued_by`, `violation_type`, `sp_level`, `description`, `document_url`, `issued_date`.
 
+`GET /violations/me` (cukup auth): user melihat pelanggaran & SP miliknya sendiri — halaman panel anggota `/my-violations` + alert SP di dashboard anggota. `violations.view` tetap untuk melihat data orang lain.
+
 ### 2.9 Recruitment
 **Recruitment:** `title`, `description`, `slug` unique, `open_date`, `close_date`, `status`.
 

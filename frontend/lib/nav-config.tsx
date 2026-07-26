@@ -12,6 +12,7 @@ import {
   MailIcon,
   MegaphoneIcon,
   SettingsIcon,
+  ShieldAlertIcon,
   ShieldIcon,
   UserIcon,
   UsersIcon,
@@ -41,6 +42,11 @@ export const memberNavItems: NavItem[] = [
     url: "/my-permissions",
     icon: <ClipboardListIcon className="size-4" />,
     permission: "permission.submit",
+  },
+  {
+    title: "Pelanggaran Saya",
+    url: "/my-violations",
+    icon: <ShieldAlertIcon className="size-4" />,
   },
   {
     title: "Pengumuman",

@@ -132,6 +132,8 @@ export interface Violation {
   type?: string
   violation_type?: string
   description?: string | null
+  sp_level?: string
+  document_url?: string | null
   issued_at?: string
   issued_date?: string
   user?: User

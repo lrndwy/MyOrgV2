@@ -69,6 +69,7 @@ import (
 	app_violation_types_id "backend/app/violation_types/_id"
 	app_violations "backend/app/violations"
 	app_violations_id "backend/app/violations/_id"
+	app_violations_me "backend/app/violations/me"
 	app_wallets "backend/app/wallets"
 	app_wallets_id "backend/app/wallets/_id"
 	"github.com/lrndwy/gokil/framework"
@@ -178,6 +179,7 @@ func init() {
 	framework.RegisterRoute("GET", "/violations", app_violations.GET)
 	framework.RegisterRoute("POST", "/violations", app_violations.POST)
 	framework.RegisterRoute("DELETE", "/violations/:id", app_violations_id.DELETE)
+	framework.RegisterRoute("GET", "/violations/me", app_violations_me.GET)
 	framework.RegisterRoute("GET", "/wallets", app_wallets.GET)
 	framework.RegisterRoute("POST", "/wallets", app_wallets.POST)
 	framework.RegisterRoute("PUT", "/wallets/:id", app_wallets_id.PUT)
