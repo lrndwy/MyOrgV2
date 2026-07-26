@@ -742,6 +742,79 @@ func (PermissionRequestService) ListPending(ctx context.Context) ([]*models.Perm
 		Filter("status", "pending").OrderBy("-id").All()
 }
 
+// ListAllDetailed mengembalikan semua pengajuan izin (semua status) dilengkapi
+// ringkasan user pengaju dan event untuk tabel approval admin.
+func (PermissionRequestService) ListAllDetailed(ctx context.Context) ([]map[string]any, error) {
+	list, err := orm.Objects[models.PermissionRequest](ctx).OrderBy("-id").All()
+	if err != nil {
+		return nil, err
+	}
+	userMap := map[int64]*models.User{}
+	eventMap := map[int64]*models.Event{}
+	out := make([]map[string]any, len(list))
+	for i, pr := range list {
+		raw, err := json.Marshal(pr)
+		if err != nil {
+			return nil, err
+		}
+		item := map[string]any{}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, err
+		}
+		if _, ok := userMap[pr.UserID]; !ok {
+			if u, err := orm.GetByID[models.User](ctx, pr.UserID); err == nil {
+				userMap[pr.UserID] = u
+			}
+		}
+		if u := userMap[pr.UserID]; u != nil {
+			item["user"] = map[string]any{
+				"id":         u.ID,
+				"username":   u.Username,
+				"full_name":  u.FullName,
+				"avatar_url": u.AvatarURL,
+			}
+		}
+		if _, ok := eventMap[pr.EventID]; !ok {
+			if e, err := orm.GetByID[models.Event](ctx, pr.EventID); err == nil {
+				eventMap[pr.EventID] = e
+			}
+		}
+		if e := eventMap[pr.EventID]; e != nil {
+			item["event"] = map[string]any{
+				"id":         e.ID,
+				"title":      e.Title,
+				"start_time": e.StartTime,
+			}
+		}
+		out[i] = item
+	}
+	return out, nil
+}
+
+// Delete menghapus pengajuan izin. Attendance turunan hasil review
+// (permitted/rejected) ikut dihapus supaya anggota bisa absen atau mengajukan
+// izin ulang; attendance hasil check-in asli (present) tidak disentuh.
+func (PermissionRequestService) Delete(ctx context.Context, id int64) error {
+	return orm.WithTx(ctx, func(txCtx context.Context, _ *orm.Tx) error {
+		pr, err := orm.GetByID[models.PermissionRequest](txCtx, id)
+		if err != nil {
+			return err
+		}
+		att, err := orm.Objects[models.Attendance](txCtx).
+			Filter("event_id", pr.EventID).Filter("user_id", pr.UserID).First()
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if att != nil && (att.Status == "permitted" || att.Status == "rejected") {
+			if _, err := orm.DeleteByID[models.Attendance](txCtx, att.ID); err != nil {
+				return err
+			}
+		}
+		_, err = orm.DeleteByID[models.PermissionRequest](txCtx, id)
+		return err
+	})
+}
+
 func (PermissionRequestService) Review(ctx context.Context, id, reviewerID int64, approve bool, note string) (*models.PermissionRequest, error) {
 	var result *models.PermissionRequest
 	err := orm.WithTx(ctx, func(txCtx context.Context, _ *orm.Tx) error {

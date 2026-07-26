@@ -17,7 +17,7 @@ func GET(ctx *views.Context) error {
 		if !ok {
 			return c.Error(403, "forbidden")
 		}
-		list, err := services.PermissionRequestService{}.ListPending(c.Request.Context())
+		list, err := services.PermissionRequestService{}.ListAllDetailed(c.Request.Context())
 		if err != nil {
 			return c.Error(500, err.Error())
 		}

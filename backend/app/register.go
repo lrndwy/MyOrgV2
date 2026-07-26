@@ -83,6 +83,7 @@ func init() {
 	framework.RegisterRoute("GET", "/announcements/:id/attachments", app_announcements_id_attachments.GET)
 	framework.RegisterRoute("GET", "/attendance/permission_requests", app_attendance_permission_requests.GET)
 	framework.RegisterRoute("PUT", "/attendance/permission_requests/:id", app_attendance_permission_requests_id.PUT)
+	framework.RegisterRoute("DELETE", "/attendance/permission_requests/:id", app_attendance_permission_requests_id.DELETE)
 	framework.RegisterRoute("POST", "/auth/login", app_auth_login.POST)
 	framework.RegisterRoute("POST", "/auth/logout", app_auth_logout.POST)
 	framework.RegisterRoute("POST", "/auth/register", app_auth_register.POST)

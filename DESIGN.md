@@ -296,6 +296,7 @@ Jalankan sebagai proses terpisah: `go run ./cmd/backend cron`. Set `Logger`/`OnE
 - Upload selfie & signature ke MinIO; simpan **URL** di DB.
 - Approval: update `permission_requests` + `attendances` dalam **satu transaksi** (`*sql.Tx` + raw SQL sampai `WithTx` di-patch).
 - **Satu kali per event:** absen ditolak jika sudah ada attendance ATAU pengajuan izin pending/approved; pengajuan izin ditolak jika sudah tercatat hadir/izin ATAU ada pengajuan pending/approved (izin yang ditolak boleh diajukan ulang). Guard di `AttendanceService.Submit` & `PermissionRequestService.Create`.
+- `GET /attendance/permission_requests` (admin) mengembalikan **semua status** + ringkasan `user`/`event` (`ListAllDetailed`). `DELETE /attendance/permission_requests/:id` (gate `attendance.approve`) menghapus pengajuan; attendance turunan review (permitted/rejected) ikut dihapus dalam satu transaksi — attendance hasil check-in (`present`) tidak disentuh.
 - Form buat event di admin default `allow_permission = true`; matikan per event bila izin tidak berlaku.
 - Profil (`PUT /me`): field `email` bisa diubah pemilik akun — divalidasi format + unik (case-insensitive, disimpan lowercase).
 
