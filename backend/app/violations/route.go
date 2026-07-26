@@ -25,7 +25,7 @@ func GET(ctx *views.Context) error {
 				userID = id
 			}
 		}
-		list, err := services.ViolationService{}.List(c.Request.Context(), userID)
+		list, err := services.ViolationService{}.ListDetailed(c.Request.Context(), userID)
 		if err != nil {
 			return c.Error(500, err.Error())
 		}

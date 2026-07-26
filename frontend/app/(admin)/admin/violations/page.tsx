@@ -138,7 +138,10 @@ export default function AdminViolationsPage() {
     () => [
       {
         id: "pengguna",
-        accessorFn: (row) => userMap.get(row.user_id) ?? `User #${row.user_id}`,
+        accessorFn: (row) =>
+          row.user?.full_name ??
+          userMap.get(row.user_id) ??
+          `User #${row.user_id}`,
         header: sortableHeader("Pengguna"),
       },
       {

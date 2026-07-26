@@ -878,6 +878,50 @@ func (ViolationService) List(ctx context.Context, userID int64) ([]*models.Viola
 	return qs.OrderBy("-issued_date").All()
 }
 
+// ListDetailed melengkapi pelanggaran dengan ringkasan user terhukum dan
+// penerbit untuk tabel admin (nama asli, bukan "User #n").
+func (ViolationService) ListDetailed(ctx context.Context, userID int64) ([]map[string]any, error) {
+	list, err := (ViolationService{}).List(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	userMap := map[int64]*models.User{}
+	summary := func(id int64) map[string]any {
+		if _, ok := userMap[id]; !ok {
+			if u, err := orm.GetByID[models.User](ctx, id); err == nil {
+				userMap[id] = u
+			}
+		}
+		u := userMap[id]
+		if u == nil {
+			return nil
+		}
+		return map[string]any{
+			"id": u.ID, "username": u.Username,
+			"full_name": u.FullName, "avatar_url": u.AvatarURL,
+		}
+	}
+	out := make([]map[string]any, len(list))
+	for i, v := range list {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		item := map[string]any{}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, err
+		}
+		if u := summary(v.UserID); u != nil {
+			item["user"] = u
+		}
+		if ib := summary(v.IssuedByID); ib != nil {
+			item["issued_by"] = ib
+		}
+		out[i] = item
+	}
+	return out, nil
+}
+
 func (ViolationService) Create(ctx context.Context, v *models.Violation) (*models.Violation, error) {
 	return orm.Create(ctx, v)
 }
