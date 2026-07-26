@@ -512,9 +512,21 @@ func (EventService) Update(ctx context.Context, id int64, values map[string]any)
 	return orm.UpdateByID[models.Event](ctx, id, values)
 }
 
+// Delete menghapus event beserta absensi dan pengajuan izinnya dalam satu
+// transaksi — tidak bergantung pada ON DELETE CASCADE di level database.
 func (EventService) Delete(ctx context.Context, id int64) error {
-	_, err := orm.DeleteByID[models.Event](ctx, id)
-	return err
+	return orm.WithTx(ctx, func(txCtx context.Context, _ *orm.Tx) error {
+		if _, err := orm.Objects[models.Attendance](txCtx).
+			Filter("event_id", id).Delete(); err != nil {
+			return err
+		}
+		if _, err := orm.Objects[models.PermissionRequest](txCtx).
+			Filter("event_id", id).Delete(); err != nil {
+			return err
+		}
+		_, err := orm.DeleteByID[models.Event](txCtx, id)
+		return err
+	})
 }
 
 func (EventService) TransitionStatuses(ctx context.Context) error {
