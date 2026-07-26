@@ -17,6 +17,7 @@ import { getStoredToken } from "@/lib/auth"
 
 type RestoreResult = {
   files_restored: number
+  files_failed?: number
   database: Record<string, number>
 }
 
@@ -102,6 +103,9 @@ export default function AdminBackupPage() {
               <div className="mt-4 rounded-lg border p-4 text-sm">
                 <p className="font-medium">
                   {result.files_restored} file storage dipulihkan
+                  {result.files_failed
+                    ? ` (${result.files_failed} gagal)`
+                    : ""}
                 </p>
                 {restoredTables.length > 0 ? (
                   <ul className="mt-2 grid gap-1 text-muted-foreground sm:grid-cols-2">

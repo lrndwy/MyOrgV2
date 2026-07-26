@@ -181,12 +181,13 @@ func seedAll(ctx context.Context) error {
 	return nil
 }
 
-// SyncMissingPermissions adds new permission codes and grants them to Admin role.
+// SyncMissingPermissions menambahkan permission code baru dan memberikannya ke
+// semua role admin-like (is_system atau bernama "Admin"). Permission turunan
+// (mis. finance.wallets.manage) juga diberikan ke role yang sudah memegang
+// permission induknya, supaya role kustom tidak diam-diam kehilangan akses
+// fitur baru.
 func SyncMissingPermissions(ctx context.Context) error {
-	adminRole, err := orm.Objects[models.Role](ctx).Filter("name", "Admin").First()
-	if err != nil {
-		return nil
-	}
+	permByCode := map[string]*models.Permission{}
 	for _, def := range permissionDefs {
 		p, err := orm.Objects[models.Permission](ctx).Filter("code", def.Code).First()
 		if err != nil {
@@ -197,17 +198,59 @@ func SyncMissingPermissions(ctx context.Context) error {
 				return err
 			}
 		}
-		count, _ := orm.Objects[models.RolePermission](ctx).
-			Filter("role_id", adminRole.ID).Filter("permission_id", p.ID).Count()
-		if count == 0 {
-			if _, err := orm.Create(ctx, &models.RolePermission{
-				RoleID: adminRole.ID, PermissionID: p.ID,
-			}); err != nil {
+		permByCode[def.Code] = p
+	}
+
+	roles, err := orm.Objects[models.Role](ctx).All()
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		if !role.IsSystem && role.Name != "Admin" {
+			continue
+		}
+		for _, p := range permByCode {
+			if err := grantIfMissing(ctx, role.ID, p.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Permission baru yang merupakan perluasan dari permission lama:
+	// role yang punya source otomatis mendapat target.
+	derived := map[string]string{
+		"finance.categories.manage": "finance.wallets.manage",
+	}
+	for sourceCode, targetCode := range derived {
+		source, okS := permByCode[sourceCode]
+		target, okT := permByCode[targetCode]
+		if !okS || !okT {
+			continue
+		}
+		holders, err := orm.Objects[models.RolePermission](ctx).
+			Filter("permission_id", source.ID).All()
+		if err != nil {
+			return err
+		}
+		for _, rp := range holders {
+			if err := grantIfMissing(ctx, rp.RoleID, target.ID); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+func grantIfMissing(ctx context.Context, roleID, permissionID int64) error {
+	count, _ := orm.Objects[models.RolePermission](ctx).
+		Filter("role_id", roleID).Filter("permission_id", permissionID).Count()
+	if count > 0 {
+		return nil
+	}
+	_, err := orm.Create(ctx, &models.RolePermission{
+		RoleID: roleID, PermissionID: permissionID,
+	})
+	return err
 }
 
 

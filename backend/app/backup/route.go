@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"backend/internal/auth"
 	"backend/internal/permission"
+	"backend/internal/storageutil"
 	"backend/services"
 
 	"github.com/lrndwy/gokil/views"
@@ -38,7 +40,8 @@ func exportBackup(ctx *views.Context) error {
 	if !ok {
 		return ctx.Error(403, "forbidden")
 	}
-	payload, err := services.BackupService{}.ExportJSON(ctx.Request.Context())
+	reqCtx := ctx.Request.Context()
+	payload, err := services.BackupService{}.ExportJSON(reqCtx)
 	if err != nil {
 		return ctx.Error(500, err.Error())
 	}
@@ -55,6 +58,31 @@ func exportBackup(ctx *views.Context) error {
 	if _, err := w.Write(raw); err != nil {
 		return ctx.Error(500, err.Error())
 	}
+
+	written := map[string]bool{}
+
+	// 1) Semua file yang dirujuk kolom URL di database — bekerja untuk
+	//    provider lokal maupun S3/MinIO (dibaca lewat URL-nya).
+	for key, url := range (services.BackupService{}).CollectFileRefs(payload) {
+		name := "storage/" + key
+		if written[name] {
+			continue
+		}
+		data, err := storageutil.ReadURL(reqCtx, url)
+		if err != nil {
+			continue // file hilang di storage; jangan gagalkan seluruh backup
+		}
+		fw, err := zw.Create(name)
+		if err != nil {
+			continue
+		}
+		if _, err := fw.Write(data); err == nil {
+			written[name] = true
+		}
+	}
+
+	// 2) Sapu direktori storage lokal (provider lokal) untuk file yang tidak
+	//    terekam di kolom URL mana pun.
 	storageRoot := storageRootPath()
 	_ = filepath.Walk(storageRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -64,7 +92,11 @@ func exportBackup(ctx *views.Context) error {
 		if err != nil {
 			return nil
 		}
-		fw, err := zw.Create("storage/" + filepath.ToSlash(rel))
+		name := "storage/" + filepath.ToSlash(rel)
+		if written[name] {
+			return nil
+		}
+		fw, err := zw.Create(name)
 		if err != nil {
 			return nil
 		}
@@ -73,7 +105,9 @@ func exportBackup(ctx *views.Context) error {
 			return nil
 		}
 		defer f.Close()
-		_, _ = io.Copy(fw, f)
+		if _, err := io.Copy(fw, f); err == nil {
+			written[name] = true
+		}
 		return nil
 	})
 	if err := zw.Close(); err != nil {
@@ -108,11 +142,9 @@ func importBackup(ctx *views.Context) error {
 	if err != nil {
 		return ctx.Error(400, "invalid zip")
 	}
-	storageRoot, err := filepath.Abs(storageRootPath())
-	if err != nil {
-		return ctx.Error(500, err.Error())
-	}
+	reqCtx := ctx.Request.Context()
 	filesRestored := 0
+	filesFailed := 0
 	var dataJSON []byte
 	for _, f := range zr.File {
 		if f.Name == "data.json" {
@@ -123,25 +155,35 @@ func importBackup(ctx *views.Context) error {
 			}
 			continue
 		}
-		if strings.HasPrefix(f.Name, "storage/") {
-			rel := strings.TrimPrefix(f.Name, "storage/")
-			dest := filepath.Join(storageRoot, filepath.FromSlash(rel))
-			// Tolak entry zip yang mencoba keluar dari storage root (zip-slip).
-			if dest != storageRoot && !strings.HasPrefix(dest, storageRoot+string(os.PathSeparator)) {
-				continue
-			}
-			rc, err := f.Open()
-			if err != nil {
-				continue
-			}
-			_ = os.MkdirAll(filepath.Dir(dest), 0o755)
-			out, err := os.Create(dest)
-			if err == nil {
-				_, _ = io.Copy(out, rc)
-				out.Close()
-				filesRestored++
-			}
-			rc.Close()
+		if !strings.HasPrefix(f.Name, "storage/") || f.FileInfo().IsDir() {
+			continue
+		}
+		key := strings.TrimPrefix(f.Name, "storage/")
+		// Tolak entry yang mencoba keluar dari storage root (zip-slip).
+		if key == "" || strings.Contains(key, "..") || strings.HasPrefix(key, "/") {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			filesFailed++
+			continue
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			filesFailed++
+			continue
+		}
+		contentType := mime.TypeByExtension(filepath.Ext(key))
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		// Upload ke provider storage aktif (lokal maupun S3/MinIO), sehingga
+		// restore berfungsi apa pun konfigurasi storage-nya.
+		if _, err := storageutil.Upload(reqCtx, key, content, contentType); err != nil {
+			filesFailed++
+		} else {
+			filesRestored++
 		}
 	}
 
@@ -151,16 +193,17 @@ func importBackup(ctx *views.Context) error {
 		if err := json.Unmarshal(dataJSON, &payload); err != nil {
 			return ctx.Error(400, "data.json tidak valid: "+err.Error())
 		}
-		dbStats, err = services.BackupService{}.RestoreJSON(ctx.Request.Context(), payload)
+		dbStats, err = services.BackupService{}.RestoreJSON(reqCtx, payload)
 		if err != nil {
 			return ctx.Error(500, err.Error())
 		}
 	}
 
-	services.LogActivity(ctx.Request.Context(), user.ID, "restore", "backup", 0,
+	services.LogActivity(reqCtx, user.ID, "restore", "backup", 0,
 		"Memulihkan backup sistem", ctx.Request.RemoteAddr)
 	return ctx.Success(200, "backup restored", map[string]any{
 		"files_restored": filesRestored,
+		"files_failed":   filesFailed,
 		"database":       dbStats,
 	})
 }

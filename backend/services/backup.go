@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/lrndwy/gokil/orm"
 )
@@ -101,6 +103,71 @@ func (BackupService) ExportJSON(ctx context.Context) (map[string]any, error) {
 		payload[t.Key] = items
 	}
 	return payload, nil
+}
+
+// CollectFileRefs memindai payload export dan mengembalikan pasangan
+// key storage → URL untuk setiap kolom URL file (avatar, banner, selfie,
+// lampiran, dsb.), apa pun provider storage-nya (lokal maupun S3/MinIO).
+func (BackupService) CollectFileRefs(payload map[string]any) map[string]string {
+	refs := map[string]string{}
+	for _, tableData := range payload {
+		rows, ok := tableData.([]map[string]any)
+		if !ok {
+			continue
+		}
+		for _, row := range rows {
+			for col, val := range row {
+				if col != "url" && !strings.HasSuffix(col, "_url") {
+					continue
+				}
+				s, ok := val.(string)
+				if !ok || s == "" || strings.HasPrefix(s, "data:") {
+					continue
+				}
+				if key := StorageKeyFromURL(s); key != "" {
+					refs[key] = s
+				}
+			}
+		}
+	}
+	return refs
+}
+
+// StorageKeyFromURL menurunkan key storage dari URL yang tersimpan di DB.
+// Format URL: "<base_url>/<key>" (local/S3 dengan base URL), "/storage/<key>"
+// (local tanpa base URL), atau "https://<bucket>.s3.amazonaws.com/<key>".
+func StorageKeyFromURL(url string) string {
+	if base := strings.TrimSuffix(os.Getenv("GOKIL_STORAGE_BASE_URL"), "/"); base != "" {
+		if strings.HasPrefix(url, base+"/") {
+			return sanitizeStorageKey(strings.TrimPrefix(url, base+"/"))
+		}
+	}
+	if strings.HasPrefix(url, "/storage/") {
+		return sanitizeStorageKey(strings.TrimPrefix(url, "/storage/"))
+	}
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		rest := url[strings.Index(url, "://")+3:]
+		if slash := strings.Index(rest, "/"); slash >= 0 {
+			path := rest[slash+1:]
+			// Buang segmen bucket bila URL berbentuk <host>/<bucket>/<key>.
+			if bucket := os.Getenv("GOKIL_STORAGE_BUCKET"); bucket != "" {
+				path = strings.TrimPrefix(path, bucket+"/")
+			}
+			return sanitizeStorageKey(path)
+		}
+	}
+	return ""
+}
+
+func sanitizeStorageKey(key string) string {
+	key = strings.TrimPrefix(key, "/")
+	if key == "" || strings.Contains(key, "..") {
+		return ""
+	}
+	if i := strings.IndexAny(key, "?#"); i >= 0 {
+		key = key[:i]
+	}
+	return key
 }
 
 // RestoreJSON meng-upsert setiap baris dengan ID eksplisit (ON CONFLICT (id)
