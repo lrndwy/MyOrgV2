@@ -158,7 +158,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
     try {
       const body = new FormData()
       body.append("file", file)
-      const preview = await apiRequest<ParsePreview>("/letters/parse-incoming", {
+      const preview = await apiRequest<ParsePreview>("/letters/parse_incoming", {
         method: "POST",
         body,
       })
@@ -402,7 +402,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
     const ids = Object.keys(rowSelection).map(Number).filter(Boolean)
     if (!ids.length) return
     try {
-      await apiRequest("/letters/bulk-delete", {
+      await apiRequest("/letters/bulk_delete", {
         method: "POST",
         body: { ids },
       })
