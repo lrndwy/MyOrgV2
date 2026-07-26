@@ -732,11 +732,6 @@ func (PermissionRequestService) Create(ctx context.Context, eventID, userID int6
 	})
 }
 
-func (PermissionRequestService) ListMine(ctx context.Context, userID int64) ([]*models.PermissionRequest, error) {
-	return orm.Objects[models.PermissionRequest](ctx).
-		Filter("user_id", userID).OrderBy("-id").All()
-}
-
 func (PermissionRequestService) ListPending(ctx context.Context) ([]*models.PermissionRequest, error) {
 	return orm.Objects[models.PermissionRequest](ctx).
 		Filter("status", "pending").OrderBy("-id").All()
@@ -749,6 +744,21 @@ func (PermissionRequestService) ListAllDetailed(ctx context.Context) ([]map[stri
 	if err != nil {
 		return nil, err
 	}
+	return enrichPermissionRequests(ctx, list, true)
+}
+
+// ListMineDetailed: pengajuan milik satu user dengan ringkasan event (tanpa
+// data user — pemiliknya sudah tahu dirinya sendiri).
+func (PermissionRequestService) ListMineDetailed(ctx context.Context, userID int64) ([]map[string]any, error) {
+	list, err := orm.Objects[models.PermissionRequest](ctx).
+		Filter("user_id", userID).OrderBy("-id").All()
+	if err != nil {
+		return nil, err
+	}
+	return enrichPermissionRequests(ctx, list, false)
+}
+
+func enrichPermissionRequests(ctx context.Context, list []*models.PermissionRequest, withUser bool) ([]map[string]any, error) {
 	userMap := map[int64]*models.User{}
 	eventMap := map[int64]*models.Event{}
 	out := make([]map[string]any, len(list))
@@ -761,17 +771,19 @@ func (PermissionRequestService) ListAllDetailed(ctx context.Context) ([]map[stri
 		if err := json.Unmarshal(raw, &item); err != nil {
 			return nil, err
 		}
-		if _, ok := userMap[pr.UserID]; !ok {
-			if u, err := orm.GetByID[models.User](ctx, pr.UserID); err == nil {
-				userMap[pr.UserID] = u
+		if withUser {
+			if _, ok := userMap[pr.UserID]; !ok {
+				if u, err := orm.GetByID[models.User](ctx, pr.UserID); err == nil {
+					userMap[pr.UserID] = u
+				}
 			}
-		}
-		if u := userMap[pr.UserID]; u != nil {
-			item["user"] = map[string]any{
-				"id":         u.ID,
-				"username":   u.Username,
-				"full_name":  u.FullName,
-				"avatar_url": u.AvatarURL,
+			if u := userMap[pr.UserID]; u != nil {
+				item["user"] = map[string]any{
+					"id":         u.ID,
+					"username":   u.Username,
+					"full_name":  u.FullName,
+					"avatar_url": u.AvatarURL,
+				}
 			}
 		}
 		if _, ok := eventMap[pr.EventID]; !ok {
