@@ -1,7 +1,6 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { useTheme } from "next-themes"
 import { toast } from "sonner"
 import { AppearanceSettings } from "@/components/admin/appearance-settings"
 import { PageHeader } from "@/components/page-header"
@@ -20,13 +19,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useApi } from "@/hooks/use-api"
 import { updateSettingsCache } from "@/hooks/use-settings"
@@ -35,7 +27,6 @@ import { storageUrl } from "@/lib/storage-url"
 import type { OrganizationSettings } from "@/lib/types"
 
 export default function AdminSettingsPage() {
-  const { setTheme } = useTheme()
   const { data, loading, error, setData } = useApi(() =>
     apiRequest<OrganizationSettings>("/settings")
   )
@@ -73,7 +64,6 @@ export default function AdminSettingsPage() {
     try {
       const body = new FormData()
       body.append("web_name", settings.web_name ?? "")
-      body.append("theme", settings.theme ?? "system")
       body.append(
         "allow_self_register",
         String(settings.allow_self_register ?? false)
@@ -182,29 +172,6 @@ export default function AdminSettingsPage() {
                       />
                     </div>
                   </Field>
-                  <Field>
-                    <FieldLabel>Tema</FieldLabel>
-                    <Select
-                      value={settings.theme ?? "system"}
-                      onValueChange={(value) => {
-                        if (value == null) return
-                        setForm({
-                          ...settings,
-                          theme: value as OrganizationSettings["theme"],
-                        })
-                        setTheme(value)
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih tema" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="light">Light</SelectItem>
-                        <SelectItem value="dark">Dark</SelectItem>
-                        <SelectItem value="system">System</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
                   <Field className="flex flex-row items-center justify-between rounded-lg border p-3">
                     <FieldLabel>Izinkan Registrasi Mandiri</FieldLabel>
                     <Switch
@@ -236,7 +203,10 @@ export default function AdminSettingsPage() {
         ) : null}
 
         {settings ? (
-          <AppearanceSettings savedAppearance={data?.appearance} />
+          <AppearanceSettings
+            savedAppearance={data?.appearance}
+            savedTheme={data?.theme}
+          />
         ) : null}
       </div>
     </>
