@@ -445,12 +445,16 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
         id: "subjek",
         accessorKey: "subject",
         header: "Perihal",
-        cell: ({ row }) => row.original.subject ?? "-",
+        cell: ({ row }) => (
+          <span className="line-clamp-2 max-w-[260px] whitespace-normal break-words">
+            {row.original.subject || "-"}
+          </span>
+        ),
       },
       {
         id: "kategori",
-        accessorFn: (row) => categoryMap.get(row.category_id ?? 0) ?? "-",
         header: "Kategori",
+        cell: ({ row }) => categoryMap.get(row.original.category_id ?? 0) ?? "-",
       },
       {
         id: "tanggal",
