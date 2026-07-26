@@ -33,6 +33,7 @@ import type { User } from "@/lib/types"
 
 const profileSchema = z.object({
   full_name: z.string().min(1, "Nama wajib diisi"),
+  email: z.string().email("Format email tidak valid"),
   birth_date: z.string().optional(),
   hometown: z.string().optional(),
   phone: z.string().optional(),
@@ -64,6 +65,7 @@ export default function ProfilePage() {
     resolver: zodResolver(profileSchema),
     values: {
       full_name: user?.full_name ?? "",
+      email: user?.email ?? "",
       birth_date: user?.birth_date?.slice(0, 10) ?? "",
       hometown: user?.hometown ?? "",
       phone: user?.phone ?? "",
@@ -117,6 +119,7 @@ export default function ProfilePage() {
         body: values,
       })
       setData(updated)
+      await refreshAuth()
       toast.success("Profil berhasil diperbarui")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal menyimpan")
@@ -217,10 +220,6 @@ export default function ProfilePage() {
                   {user.username}
                 </p>
                 <p>
-                  <span className="text-muted-foreground">Email:</span>{" "}
-                  {user.email}
-                </p>
-                <p>
                   <span className="text-muted-foreground">Divisi:</span>{" "}
                   {typeof user.division === "string"
                     ? user.division
@@ -245,6 +244,15 @@ export default function ProfilePage() {
                     <Field>
                       <FieldLabel>Nama Lengkap</FieldLabel>
                       <Input {...profileForm.register("full_name")} />
+                    </Field>
+                    <Field>
+                      <FieldLabel>Email</FieldLabel>
+                      <Input type="email" {...profileForm.register("email")} />
+                      {profileForm.formState.errors.email ? (
+                        <p className="text-xs text-destructive">
+                          {profileForm.formState.errors.email.message}
+                        </p>
+                      ) : null}
                     </Field>
                     <Field>
                       <FieldLabel>Tanggal Lahir</FieldLabel>

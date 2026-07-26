@@ -63,6 +63,21 @@ func UserHas(ctx *views.Context, user *auth.User, code string) (bool, error) {
 	return false, nil
 }
 
+// UserHasAny dipakai endpoint data referensi (dropdown form) yang sah diakses
+// oleh pemegang salah satu dari beberapa permission terkait.
+func UserHasAny(ctx *views.Context, user *auth.User, codes ...string) (bool, error) {
+	for _, code := range codes {
+		ok, err := UserHas(ctx, user, code)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func ListCodes(ctx *views.Context, user *auth.User) ([]string, error) {
 	if user.IsSystemAdmin {
 		all, err := orm.Objects[models.Permission](ctx.Request.Context()).All()

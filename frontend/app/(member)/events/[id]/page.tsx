@@ -7,15 +7,11 @@ import {
   CalendarIcon,
   MapPinIcon,
 } from "lucide-react"
-import { toast } from "sonner"
-import { FormDialog } from "@/components/advanced-table"
+import { IzinRequestDialog } from "@/components/member/izin-request-dialog"
 import { PageHeader } from "@/components/page-header"
 import { ErrorState, LoadingState } from "@/components/page-states"
 import { StatusBadge } from "@/components/status-badge"
 import { Button } from "@/components/ui/button"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { useApi } from "@/hooks/use-api"
 import { apiRequest } from "@/lib/api"
 import { formatDate } from "@/lib/format"
@@ -35,15 +31,6 @@ const PERMISSION_LABELS: Record<string, string> = {
   rejected: "Ditolak",
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(new Error("Gagal membaca file"))
-    reader.readAsDataURL(file)
-  })
-}
-
 export default function EventDetailPage({
   params,
 }: {
@@ -55,9 +42,6 @@ export default function EventDetailPage({
     [id]
   )
   const [izinOpen, setIzinOpen] = useState(false)
-  const [izinReason, setIzinReason] = useState("")
-  const [izinProof, setIzinProof] = useState<File | null>(null)
-  const [izinSaving, setIzinSaving] = useState(false)
   const banner = event ? eventBannerUrl(event) : null
 
   const hasAttendance = Boolean(event?.my_attendance_status)
@@ -68,36 +52,6 @@ export default function EventDetailPage({
     (event?.status === "upcoming" || event?.status === "ongoing") &&
     event?.my_permission_request_status !== "pending" &&
     event?.my_permission_request_status !== "approved"
-
-  async function handleSubmitIzin() {
-    if (!izinReason.trim()) {
-      toast.error("Alasan izin wajib diisi")
-      return
-    }
-    setIzinSaving(true)
-    try {
-      const proof = izinProof ? await fileToDataUrl(izinProof) : ""
-      await apiRequest("/permission_requests", {
-        method: "POST",
-        body: {
-          event_id: Number(id),
-          reason: izinReason.trim(),
-          proof,
-        },
-      })
-      toast.success("Pengajuan izin terkirim, menunggu persetujuan")
-      setIzinOpen(false)
-      setIzinReason("")
-      setIzinProof(null)
-      void refetch()
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Gagal mengajukan izin"
-      )
-    } finally {
-      setIzinSaving(false)
-    }
-  }
 
   return (
     <>
@@ -230,38 +184,12 @@ export default function EventDetailPage({
         ) : null}
       </div>
 
-      <FormDialog
+      <IzinRequestDialog
+        eventId={Number(id)}
         open={izinOpen}
         onOpenChange={setIzinOpen}
-        title="Ajukan Izin"
-        onSubmit={handleSubmitIzin}
-        saving={izinSaving}
-        submitLabel="Kirim Pengajuan"
-      >
-        <FieldGroup>
-          <Field>
-            <FieldLabel>Alasan</FieldLabel>
-            <Textarea
-              value={izinReason}
-              onChange={(e) => setIzinReason(e.target.value)}
-              placeholder="Jelaskan alasan Anda tidak dapat hadir"
-              rows={4}
-              required
-            />
-          </Field>
-          <Field>
-            <FieldLabel>Bukti Pendukung (opsional)</FieldLabel>
-            <Input
-              type="file"
-              accept="image/*,.pdf"
-              onChange={(e) => setIzinProof(e.target.files?.[0] ?? null)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Foto/dokumen pendukung, mis. surat keterangan sakit.
-            </p>
-          </Field>
-        </FieldGroup>
-      </FormDialog>
+        onSuccess={() => void refetch()}
+      />
     </>
   )
 }

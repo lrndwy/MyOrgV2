@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"regexp"
 	"strings"
 	"time"
 
@@ -636,6 +637,15 @@ func (AttendanceService) Submit(ctx context.Context, eventID, userID int64, self
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
+	// Sudah mengajukan izin (pending/disetujui) → tidak boleh absen lagi.
+	pr, err := orm.Objects[models.PermissionRequest](ctx).
+		Filter("event_id", eventID).Filter("user_id", userID).OrderBy("-id").First()
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	if pr != nil && (pr.Status == "pending" || pr.Status == "approved") {
+		return nil, fmt.Errorf("anda sudah mengajukan izin untuk event ini")
+	}
 
 	selfieBytes, selfieCT, err := decodeUpload(selfieData)
 	if err != nil {
@@ -685,6 +695,25 @@ func (PermissionRequestService) Create(ctx context.Context, eventID, userID int6
 	}
 	if !event.AllowPermission {
 		return nil, fmt.Errorf("permission not allowed for this event")
+	}
+	// Sudah tercatat hadir/izin di event ini → tidak boleh mengajukan izin lagi.
+	att, err := orm.Objects[models.Attendance](ctx).
+		Filter("event_id", eventID).Filter("user_id", userID).First()
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	if att != nil && (att.Status == "present" || att.Status == "permitted") {
+		return nil, fmt.Errorf("anda sudah tercatat di event ini")
+	}
+	// Pengajuan sebelumnya yang masih pending/disetujui tidak boleh diduplikasi;
+	// pengajuan yang ditolak boleh diajukan ulang.
+	prev, err := orm.Objects[models.PermissionRequest](ctx).
+		Filter("event_id", eventID).Filter("user_id", userID).OrderBy("-id").First()
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	if prev != nil && (prev.Status == "pending" || prev.Status == "approved") {
+		return nil, fmt.Errorf("pengajuan izin anda sudah tercatat untuk event ini")
 	}
 	proofURL := ""
 	if proofData != "" {
@@ -1192,6 +1221,8 @@ func (FinanceService) Dashboard(ctx context.Context) (map[string]any, error) {
 
 type ProfileService struct{}
 
+var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+
 func (ProfileService) Get(ctx context.Context, userID int64) (map[string]any, error) {
 	u, err := orm.GetByID[models.User](ctx, userID)
 	if err != nil {
@@ -1201,12 +1232,27 @@ func (ProfileService) Get(ctx context.Context, userID int64) (map[string]any, er
 }
 
 func (ProfileService) Update(ctx context.Context, userID int64, values map[string]any) (*models.User, error) {
-	allowed := map[string]bool{"full_name": true, "birth_date": true, "hometown": true, "phone": true}
+	allowed := map[string]bool{"full_name": true, "birth_date": true, "hometown": true, "phone": true, "email": true}
 	clean := map[string]any{}
 	for k, v := range values {
 		if allowed[k] {
 			clean[k] = v
 		}
+	}
+	if v, ok := clean["email"]; ok {
+		s, _ := v.(string)
+		s = strings.ToLower(strings.TrimSpace(s))
+		if !emailPattern.MatchString(s) {
+			return nil, fmt.Errorf("format email tidak valid")
+		}
+		existing, err := orm.Objects[models.User](ctx).Filter("email", s).First()
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+		if existing != nil && existing.ID != userID {
+			return nil, fmt.Errorf("email sudah digunakan akun lain")
+		}
+		clean["email"] = s
 	}
 	if v, ok := clean["birth_date"]; ok {
 		s, _ := v.(string)

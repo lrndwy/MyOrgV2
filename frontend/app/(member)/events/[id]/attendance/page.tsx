@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, use } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { IzinRequestDialog } from "@/components/member/izin-request-dialog"
 import { PageHeader } from "@/components/page-header"
 import { LoadingState } from "@/components/page-states"
 import { WebcamCapture } from "@/components/webcam-capture"
@@ -79,12 +80,21 @@ export default function EventAttendancePage({
   const [drawing, setDrawing] = useState(false)
   const [selfie, setSelfie] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const { data: event, loading: eventLoading } = useApi(
+  const [izinOpen, setIzinOpen] = useState(false)
+  const { data: event, loading: eventLoading, refetch } = useApi(
     () => apiRequest<Event>(`/events/${id}`),
     [id]
   )
   const alreadyAttended = Boolean(event?.my_attendance_status)
+  const izinSubmitted =
+    event?.my_permission_request_status === "pending" ||
+    event?.my_permission_request_status === "approved"
   const notOngoing = Boolean(event) && event?.status !== "ongoing"
+  const canRequestIzin =
+    Boolean(event?.allow_permission) &&
+    !alreadyAttended &&
+    !izinSubmitted &&
+    (event?.status === "upcoming" || event?.status === "ongoing")
 
   // Canvas baru dirender setelah status event dimuat, jadi efek ini harus
   // ikut bergantung pada kondisi yang menentukan form tampil atau tidak.
@@ -99,7 +109,7 @@ export default function EventAttendancePage({
     })
     observer.observe(canvas)
     return () => observer.disconnect()
-  }, [eventLoading, alreadyAttended, notOngoing])
+  }, [eventLoading, alreadyAttended, izinSubmitted, notOngoing])
 
   function startDraw(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current
@@ -194,7 +204,20 @@ export default function EventAttendancePage({
           </Alert>
         ) : null}
 
-        {!eventLoading && !alreadyAttended && notOngoing ? (
+        {!eventLoading && !alreadyAttended && izinSubmitted ? (
+          <Alert>
+            <AlertTitle>Anda sudah mengajukan izin untuk event ini</AlertTitle>
+            <AlertDescription>
+              Status pengajuan:{" "}
+              {event?.my_permission_request_status === "approved"
+                ? "disetujui"
+                : "menunggu persetujuan"}
+              . Absensi maupun pengajuan izin hanya dapat dilakukan satu kali.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {!eventLoading && !alreadyAttended && !izinSubmitted && notOngoing ? (
           <Alert>
             <AlertTitle>Absensi belum dibuka</AlertTitle>
             <AlertDescription>
@@ -204,17 +227,24 @@ export default function EventAttendancePage({
           </Alert>
         ) : null}
 
-        {!eventLoading && (alreadyAttended || notOngoing) ? (
-          <Button
-            variant="outline"
-            className="w-fit"
-            render={<Link href={`/events/${id}`} />}
-          >
-            Kembali ke detail event
-          </Button>
+        {!eventLoading && (alreadyAttended || izinSubmitted || notOngoing) ? (
+          <div className="flex flex-wrap gap-2">
+            {canRequestIzin ? (
+              <Button className="w-fit" onClick={() => setIzinOpen(true)}>
+                Ajukan Izin
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              className="w-fit"
+              render={<Link href={`/events/${id}`} />}
+            >
+              Kembali ke detail event
+            </Button>
+          </div>
         ) : null}
 
-        {eventLoading || alreadyAttended || notOngoing ? null : (
+        {eventLoading || alreadyAttended || izinSubmitted || notOngoing ? null : (
         <>
         <Alert>
           <AlertTitle>Selfie via Kamera</AlertTitle>
@@ -262,10 +292,20 @@ export default function EventAttendancePage({
             </CardContent>
           </Card>
 
-          <div className="flex gap-2 lg:col-span-2">
+          <div className="flex flex-wrap gap-2 lg:col-span-2">
             <Button type="submit" disabled={submitting}>
               {submitting ? "Mengirim..." : "Kirim Absensi"}
             </Button>
+            {canRequestIzin ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={submitting}
+                onClick={() => setIzinOpen(true)}
+              >
+                Ajukan Izin
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -278,6 +318,13 @@ export default function EventAttendancePage({
         </>
         )}
       </div>
+
+      <IzinRequestDialog
+        eventId={Number(id)}
+        open={izinOpen}
+        onOpenChange={setIzinOpen}
+        onSuccess={() => void refetch()}
+      />
     </>
   )
 }

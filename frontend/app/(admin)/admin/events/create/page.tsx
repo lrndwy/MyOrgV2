@@ -44,7 +44,7 @@ export default function CreateEventPage() {
     start_time: "",
     end_time: "",
     division_id: "",
-    allow_permission: false,
+    allow_permission: true,
   })
   const [saving, setSaving] = useState(false)
 

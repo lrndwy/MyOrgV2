@@ -12,7 +12,9 @@ import (
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
 		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, _ := permission.UserHas(c, user, "finance.view")
+		// finance.create/edit tanpa finance.view tetap butuh daftar wallet di form.
+		ok, _ := permission.UserHasAny(c, user,
+			"finance.view", "finance.create", "finance.edit")
 		if !ok {
 			return c.Error(403, "forbidden")
 		}

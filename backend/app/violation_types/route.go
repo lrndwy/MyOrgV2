@@ -12,7 +12,7 @@ import (
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
 		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, _ := permission.UserHas(c, user, "violations.view")
+		ok, _ := permission.UserHasAny(c, user, "violations.view", "violations.manage")
 		if !ok {
 			return c.Error(403, "forbidden")
 		}

@@ -11,7 +11,9 @@ import (
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
 		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, _ := permission.UserHas(c, user, "roles.view")
+		// Daftar role juga dibutuhkan dropdown form kelola user.
+		ok, _ := permission.UserHasAny(c, user,
+			"roles.view", "users.view", "users.create", "users.edit")
 		if !ok {
 			return c.Error(403, "forbidden")
 		}

@@ -12,7 +12,9 @@ import (
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
 		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, _ := permission.UserHas(c, user, "letters.manage")
+		// Pemegang letters.view (halaman daftar surat) juga butuh kategori
+		// untuk filter/label — selaras dengan gate GET /letters.
+		ok, _ := permission.UserHasAny(c, user, "letters.view", "letters.manage")
 		if !ok {
 			return c.Error(403, "forbidden")
 		}

@@ -8,13 +8,11 @@ import (
 	"github.com/lrndwy/gokil/views"
 )
 
+// GET daftar divisi hanya butuh login: data referensi (nama + deskripsi) yang
+// dipakai panel anggota (halaman divisi, profil) dan dropdown form admin
+// (event, user) yang pemegang rolenya belum tentu punya divisions.view.
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
-		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, _ := permission.UserHas(c, user, "divisions.view")
-		if !ok {
-			return c.Error(403, "forbidden")
-		}
 		list, err := services.DivisionService{}.List(c.Request.Context())
 		if err != nil {
 			return c.Error(500, err.Error())

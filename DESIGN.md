@@ -270,6 +270,16 @@ Role **Bendahara** seed: semua `finance.*`.
 
 **Admin UI gating:** sidebar filter dari `GET /me/permissions`. System admin bypass permission bisnis.
 
+**Data referensi untuk dropdown form** (`permission.UserHasAny`): endpoint list read-only yang menjadi sumber dropdown boleh diakses pemegang salah satu permission terkait, bukan hanya permission modulnya — supaya role scoped (mis. KADIV dengan `events.*` saja) tetap bisa mengisi form:
+- `GET /divisions` → cukup login (data non-sensitif: nama+deskripsi; dipakai panel anggota, form event, form user).
+- `GET /roles` → `roles.view` | `users.view/create/edit`.
+- `GET /users` → `users.view` | `violations.manage`.
+- `GET /letter_categories` → `letters.view` | `letters.manage`.
+- `GET /violation_types` → `violations.view` | `violations.manage`.
+- `GET /finance_categories`, `GET /wallets` → `finance.view` | `finance.create` | `finance.edit`.
+
+Operasi tulis (POST/PUT/DELETE) tetap memakai permission spesifik modulnya.
+
 ## 6. Business Logic Kunci (Service Layer)
 
 Semua logic non-trivial di **`services/`**, bukan di `route.go`.
@@ -285,6 +295,9 @@ Jalankan sebagai proses terpisah: `go run ./cmd/backend cron`. Set `Logger`/`OnE
 - Absensi hanya jika `event.status == 'ongoing'`.
 - Upload selfie & signature ke MinIO; simpan **URL** di DB.
 - Approval: update `permission_requests` + `attendances` dalam **satu transaksi** (`*sql.Tx` + raw SQL sampai `WithTx` di-patch).
+- **Satu kali per event:** absen ditolak jika sudah ada attendance ATAU pengajuan izin pending/approved; pengajuan izin ditolak jika sudah tercatat hadir/izin ATAU ada pengajuan pending/approved (izin yang ditolak boleh diajukan ulang). Guard di `AttendanceService.Submit` & `PermissionRequestService.Create`.
+- Form buat event di admin default `allow_permission = true`; matikan per event bila izin tidak berlaku.
+- Profil (`PUT /me`): field `email` bisa diubah pemilik akun — divalidasi format + unik (case-insensitive, disimpan lowercase).
 
 ### 6.3 Generate Kode Surat & Dokumen Outgoing
 1. Ambil template + kategori.

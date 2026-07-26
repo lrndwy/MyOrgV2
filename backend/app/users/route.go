@@ -12,7 +12,8 @@ import (
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
 		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, err := permission.UserHas(c, user, "users.view")
+		// Daftar user juga dibutuhkan dropdown form pencatatan pelanggaran.
+		ok, err := permission.UserHasAny(c, user, "users.view", "violations.manage")
 		if err != nil || !ok {
 			return c.Error(403, "forbidden")
 		}
