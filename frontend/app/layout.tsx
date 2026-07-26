@@ -14,7 +14,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "MyOrg",
+  title: "HIMATRIS",
   description: "Sistem Informasi Manajemen Organisasi",
 }
 
