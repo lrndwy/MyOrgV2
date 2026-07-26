@@ -54,6 +54,7 @@ var permissionDefs = []struct {
 	{"storage.delete", "storage", "Delete files"},
 	{"storage.manage", "storage", "Manage storage folders"},
 	{"backup.manage", "backup", "Backup and restore system data"},
+	{"view.activity", "activity", "View activity logs"},
 }
 
 func SeedIfEmpty(ctx context.Context) error {

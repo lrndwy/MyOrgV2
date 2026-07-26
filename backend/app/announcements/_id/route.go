@@ -46,6 +46,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.AnnouncementService{}).Delete(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "announcement", id,
+			"Menghapus pengumuman", c.Request.RemoteAddr)
 		return c.Success(200, "announcement deleted", nil)
 	})(ctx)
 }

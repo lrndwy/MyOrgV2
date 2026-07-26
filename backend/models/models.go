@@ -34,6 +34,7 @@ func init() {
 		&PushSubscription{},
 		&StorageFolder{},
 		&StorageFile{},
+		&ActivityLog{},
 	)
 }
 
@@ -300,4 +301,14 @@ type StorageFile struct {
 	SizeBytes   int64               `json:"size_bytes"`
 	CreatedBy   orm.BelongsTo[User] `json:"-"`
 	CreatedByID int64               `orm:"index" json:"created_by_id"`
+}
+
+type ActivityLog struct {
+	orm.BaseModel
+	UserID       int64  `orm:"index" json:"user_id"`
+	Action       string `orm:"size:50" json:"action"`
+	ResourceType string `orm:"size:50" json:"resource_type"`
+	ResourceID   int64  `json:"resource_id"`
+	Description  string `orm:"text" json:"description"`
+	IPAddress    string `orm:"size:45" json:"ip_address"`
 }

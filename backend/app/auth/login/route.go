@@ -19,6 +19,8 @@ func POST(ctx *views.Context) error {
 	if err != nil {
 		return ctx.Error(401, err.Error())
 	}
+	services.LogActivity(ctx.Request.Context(), result.User["id"].(int64), "login", "auth", result.User["id"].(int64),
+		"Login berhasil", ctx.Request.RemoteAddr)
 	auth.SetTokenCookie(ctx, result.Token)
 	return ctx.Success(200, "login success", result)
 }

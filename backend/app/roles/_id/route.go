@@ -46,6 +46,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.RoleService{}).Delete(c.Request.Context(), id); err != nil {
 			return c.Error(400, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "role", id,
+			"Menghapus role", c.Request.RemoteAddr)
 		return c.Success(200, "role deleted", nil)
 	})(ctx)
 }

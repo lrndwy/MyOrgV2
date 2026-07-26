@@ -121,6 +121,8 @@ func POST(ctx *views.Context) error {
 				}
 			}
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "create", "announcement", a.ID,
+			"Membuat pengumuman "+title, c.Request.RemoteAddr)
 		return c.Success(201, "announcement created", a)
 	})(ctx)
 }

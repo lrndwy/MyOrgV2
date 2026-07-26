@@ -46,6 +46,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.FinanceService{}).DeleteTransaction(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "finance_transaction", id,
+			"Menghapus transaksi keuangan", c.Request.RemoteAddr)
 		return c.Success(200, "transaction deleted", nil)
 	})(ctx)
 }

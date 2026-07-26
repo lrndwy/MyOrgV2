@@ -1212,3 +1212,56 @@ func (StorageService) DeleteFile(ctx context.Context, id int64) error {
 	_, err := orm.DeleteByID[models.StorageFile](ctx, id)
 	return err
 }
+
+type ActivityLogService struct{}
+
+func (ActivityLogService) List(ctx context.Context, userID int64, resourceType string) ([]map[string]any, error) {
+	qs := orm.Objects[models.ActivityLog](ctx)
+	if userID > 0 {
+		qs = qs.Filter("user_id", userID)
+	}
+	if resourceType != "" {
+		qs = qs.Filter("resource_type", resourceType)
+	}
+	logs, err := qs.OrderBy("-created_at").Limit(200).All()
+	if err != nil {
+		return nil, err
+	}
+	userCache := map[int64]string{}
+	out := make([]map[string]any, 0, len(logs))
+	for _, l := range logs {
+		uname := ""
+		if uid, ok := userCache[l.UserID]; ok {
+			uname = uid
+		} else if u, err := orm.GetByID[models.User](ctx, l.UserID); err == nil {
+			uname = u.FullName
+			if uname == "" {
+				uname = u.Username
+			}
+			userCache[l.UserID] = uname
+		}
+		out = append(out, map[string]any{
+			"id":            l.ID,
+			"user_id":       l.UserID,
+			"user_name":     uname,
+			"action":        l.Action,
+			"resource_type": l.ResourceType,
+			"resource_id":   l.ResourceID,
+			"description":   l.Description,
+			"ip_address":    l.IPAddress,
+			"created_at":    l.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func LogActivity(ctx context.Context, userID int64, action, resourceType string, resourceID int64, description string, ip string) {
+	orm.Create(ctx, &models.ActivityLog{
+		UserID:       userID,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   resourceID,
+		Description:  description,
+		IPAddress:    ip,
+	})
+}

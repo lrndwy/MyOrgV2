@@ -1,4 +1,5 @@
 import {
+  ActivityIcon,
   BellIcon,
   Building2Icon,
   CalendarIcon,
@@ -131,6 +132,12 @@ export const adminNavItems: NavItem[] = [
     url: "/admin/storage",
     icon: <CloudIcon className="size-4" />,
     permission: "storage.view",
+  },
+  {
+    title: "Log Aktivitas",
+    url: "/admin/activity",
+    icon: <ActivityIcon className="size-4" />,
+    permission: "view.activity",
   },
 ]
 

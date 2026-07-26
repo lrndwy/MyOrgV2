@@ -261,3 +261,15 @@ export interface NavItem {
   permission?: string | string[]
   items?: { title: string; url: string; permission?: string | string[] }[]
 }
+
+export interface ActivityLog {
+  id: number
+  user_id: number
+  user_name: string
+  action: string
+  resource_type: string
+  resource_id: number
+  description: string
+  ip_address: string
+  created_at: string
+}

@@ -142,6 +142,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.EventService{}).Delete(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "event", id,
+			"Menghapus event", c.Request.RemoteAddr)
 		return c.Success(200, "event deleted", nil)
 	})(ctx)
 }
