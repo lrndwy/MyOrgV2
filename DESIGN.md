@@ -402,6 +402,7 @@ backups/{date}-{id}.zip
 - Validasi upload di service.
 - JWT secret & kredensial MinIO/DB hanya di env (jangan commit `.env`).
 - CORS mengizinkan origin frontend.
+- **Minim fingerprint stack**: `poweredByHeader: false` + security headers generik (nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy dengan `camera=(self)` untuk absensi webcam) di `frontend/next.config.ts`; scaffold `next.svg`/`vercel.svg` dihapus. Reverse proxy host (di luar repo — himatris/api-himatris.heroflow.my.id) sebaiknya juga menghapus header `Server` (`server_tokens off;` nginx / `header -Server` Caddy). Fingerprint sisa (`/_next/`, `window.next`, `self.__next_f`) diterima — masking agresif di luar scope.
 
 ## 11. Non-Goals
 

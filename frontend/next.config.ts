@@ -5,6 +5,28 @@ const backendOrigin =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Jangan bocorkan stack via header X-Powered-By (fingerprint Wappalyzer dkk).
+  poweredByHeader: false,
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            // camera=(self) wajib: absensi memakai webcam (webcam-capture.tsx).
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
