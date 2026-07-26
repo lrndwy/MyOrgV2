@@ -1140,7 +1140,21 @@ func (FinanceService) Summary(ctx context.Context) (map[string]float64, error) {
 			expense += t.Amount
 		}
 	}
-	return map[string]float64{"income": income, "expense": expense, "balance": income - expense}, nil
+	// Total saldo = akumulasi saldo awal seluruh wallet + pemasukan - pengeluaran.
+	initial := 0.0
+	wallets, err := orm.Objects[models.Wallet](ctx).All()
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range wallets {
+		initial += w.InitialBalance
+	}
+	return map[string]float64{
+		"income":          income,
+		"expense":         expense,
+		"initial_balance": initial,
+		"balance":         initial + income - expense,
+	}, nil
 }
 
 func (FinanceService) Dashboard(ctx context.Context) (map[string]any, error) {

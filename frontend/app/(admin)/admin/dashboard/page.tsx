@@ -387,12 +387,40 @@ export default function AdminDashboardPage() {
                       </p>
                     </div>
                     <div className="rounded-xl bg-muted/50 px-4 py-3">
-                      <p className="text-xs text-muted-foreground">Saldo</p>
+                      <p className="text-xs text-muted-foreground">
+                        Total Saldo
+                      </p>
                       <p className="mt-1 font-semibold tabular-nums">
                         {formatCurrency(financeSummary?.balance ?? 0)}
                       </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Termasuk saldo awal wallet
+                      </p>
                     </div>
                   </CardContent>
+                  {(finance.data?.wallets?.length ?? 0) > 0 ? (
+                    <CardContent className="border-t pt-4">
+                      <p className="mb-2 text-xs font-medium text-muted-foreground">
+                        Rekap per wallet
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {finance.data!.wallets!.map((w) => (
+                          <div
+                            key={w.id}
+                            className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
+                          >
+                            <span className="truncate text-muted-foreground">
+                              {w.name}
+                              {w.is_active === false ? " (nonaktif)" : ""}
+                            </span>
+                            <span className="ml-2 shrink-0 font-medium tabular-nums">
+                              {formatCurrency(w.balance ?? 0)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  ) : null}
                 </Card>
               ) : null}
             </div>

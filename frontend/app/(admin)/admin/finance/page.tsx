@@ -142,8 +142,11 @@ export default function AdminFinancePage() {
         ),
       },
       {
-        label: "Saldo",
+        label: "Total Saldo",
         value: formatCurrency(financeSummary?.balance ?? 0),
+        description: `Saldo awal wallet ${formatCurrency(
+          financeSummary?.initial_balance ?? 0
+        )} + pemasukan − pengeluaran`,
       },
       { label: "Transaksi", value: rows.length },
     ],
@@ -467,6 +470,25 @@ export default function AdminFinancePage() {
       stats={stats}
       actions={<Button onClick={openCreate}>Tambah Transaksi</Button>}
     >
+      {walletList.length > 0 ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {walletList.map((w) => (
+            <div key={w.id} className="rounded-lg border px-4 py-3">
+              <p className="text-xs text-muted-foreground">
+                {w.name}
+                {w.is_active === false ? " (nonaktif)" : ""}
+              </p>
+              <p className="mt-1 font-semibold tabular-nums">
+                {formatCurrency(w.balance ?? 0)}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Saldo awal {formatCurrency(w.initial_balance ?? 0)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <Tabs defaultValue="transactions">
         <TabsList>
           <TabsTrigger value="transactions">Transaksi</TabsTrigger>

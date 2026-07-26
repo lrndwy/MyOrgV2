@@ -251,6 +251,7 @@ export interface FinanceSummary {
   total_expense?: number
   income?: number
   expense?: number
+  initial_balance?: number
   balance?: number
 }
 
