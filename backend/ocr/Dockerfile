@@ -20,4 +20,4 @@ ENV OCR_MIN_NATIVE_CHARS_PER_PAGE=40
 
 EXPOSE 8090
 
-CMD ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8090"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]
