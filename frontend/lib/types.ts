@@ -50,6 +50,7 @@ export interface OrganizationSettings {
   logo_url?: string | null
   icon_url?: string | null
   theme?: "light" | "dark" | "system"
+  appearance?: string
   allow_self_register?: boolean
   allow_cross_division_events_view?: boolean
 }

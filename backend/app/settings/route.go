@@ -16,7 +16,10 @@ func GET(ctx *views.Context) error {
 		return ctx.Error(404, "settings not found")
 	}
 	return ctx.Success(200, "settings", map[string]any{
-		"web_name": s.WebName, "logo_url": s.LogoURL, "icon_url": s.IconURL, "theme": s.Theme,
+		"web_name": s.WebName, "logo_url": s.LogoURL, "icon_url": s.IconURL,
+		"theme": s.Theme, "appearance": s.Appearance,
+		"allow_self_register":              s.AllowSelfRegister,
+		"allow_cross_division_events_view": s.AllowCrossDivisionEventsView,
 	})
 }
 

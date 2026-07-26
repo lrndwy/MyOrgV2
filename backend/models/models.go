@@ -45,6 +45,7 @@ type OrganizationSettings struct {
 	LogoURL                      string `orm:"size:255" json:"logo_url"`
 	IconURL                      string `orm:"size:255" json:"icon_url"`
 	Theme                        string `orm:"size:20;default:system" json:"theme"`
+	Appearance                   string `orm:"text" json:"appearance"`
 	AllowSelfRegister            bool   `orm:"default:false" json:"allow_self_register"`
 	AllowCrossDivisionEventsView bool   `orm:"default:false" json:"allow_cross_division_events_view"`
 }

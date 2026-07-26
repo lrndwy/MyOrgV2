@@ -333,6 +333,8 @@ if user lacks "events.view_all" AND settings.allow_cross_division_events_view ==
 ### 6.7 Organization Settings Singleton
 Service enforce max 1 row.
 
+**Kustomisasi tampilan** (kolom `appearance`, TEXT berisi JSON): parameter `style` (preset vega/nova/mala/lyra/mira/luma/sera/rhea — kurasi sendiri, bukan token registry premium shadcn), `base` (neutral/stone/zinc/gray/slate), `primary` (10 warna), `chart` (5 palet), `heading_font`/`text_font` (6 font Google via next/font, variabel `--font-*` di root layout), `radius` (rem). Frontend `lib/appearance.ts` menerjemahkan config → CSS variables `:root` + `.dark` yang di-inject sebagai `<style id="app-appearance">` (menimpa default base-mira di `globals.css`); `AppearanceSync` menerapkannya saat load, panel di `/admin/settings` menerapkan draft secara live sebelum disimpan lewat `PUT /settings` (field form `json`). `appearance` kosong/invalid → fallback tampilan bawaan.
+
 ### 6.8 User Import
 Parse CSV/XLSX → validasi → bulk insert → email async.
 

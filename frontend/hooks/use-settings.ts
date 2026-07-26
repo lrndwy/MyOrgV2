@@ -17,6 +17,14 @@ function fetchSettings(): Promise<OrganizationSettings> {
   return inflight
 }
 
+/**
+ * Perbarui cache settings modul ini setelah PUT berhasil, supaya komponen yang
+ * mount belakangan (mis. AppearanceSync) tidak memakai nilai basi.
+ */
+export function updateSettingsCache(next: OrganizationSettings) {
+  cached = next
+}
+
 export function useSettings() {
   const [settings, setSettings] = useState<OrganizationSettings | null>(cached)
   const [loading, setLoading] = useState(!cached)

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { useTheme } from "next-themes"
 import { toast } from "sonner"
+import { AppearanceSettings } from "@/components/admin/appearance-settings"
 import { PageHeader } from "@/components/page-header"
 import { ErrorState, LoadingState } from "@/components/page-states"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useApi } from "@/hooks/use-api"
+import { updateSettingsCache } from "@/hooks/use-settings"
 import { apiRequest } from "@/lib/api"
 import { storageUrl } from "@/lib/storage-url"
 import type { OrganizationSettings } from "@/lib/types"
@@ -88,6 +90,7 @@ export default function AdminSettingsPage() {
         body,
       })
       setData(updated)
+      updateSettingsCache(updated)
       setForm(null)
       handleLogoChange(null)
       handleIconChange(null)
@@ -230,6 +233,10 @@ export default function AdminSettingsPage() {
               </form>
             </CardContent>
           </Card>
+        ) : null}
+
+        {settings ? (
+          <AppearanceSettings savedAppearance={data?.appearance} />
         ) : null}
       </div>
     </>
