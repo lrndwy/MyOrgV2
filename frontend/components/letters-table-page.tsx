@@ -256,7 +256,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
       try {
         const res = await apiRequest<{
           preview?: string
-        }>(`/letter_categories/${categoryId}/preview-number`, {
+        }>(`/letter_categories/${categoryId}/preview_number`, {
           method: "POST",
           body: { segments: numberSegmentValues },
         })
