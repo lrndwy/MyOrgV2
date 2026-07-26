@@ -52,6 +52,10 @@ services:
         condition: service_healthy
     environment:
       OCR_SERVICE_URL: http://ocr:8090
+    volumes:
+      # Tanpa volume ini, semua file upload (avatar, banner, lampiran, dsb.)
+      # hilang setiap kali container di-rebuild/redeploy.
+      - gokil_storage:/app/storage
     restart: unless-stopped
     networks:
       - internal
@@ -126,6 +130,7 @@ services:
 volumes:
   db_data:
   redis_data:
+  gokil_storage:
   # minio_data:
 
 networks:

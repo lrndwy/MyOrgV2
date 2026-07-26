@@ -60,6 +60,12 @@ func exportBackup(ctx *views.Context) error {
 	}
 
 	written := map[string]bool{}
+	type missingFile struct {
+		Key string `json:"key"`
+		URL string `json:"url"`
+	}
+	missing := []missingFile{}
+	storageRoot := storageRootPath()
 
 	// 1) Semua file yang dirujuk kolom URL di database — bekerja untuk
 	//    provider lokal maupun S3/MinIO (dibaca lewat URL-nya).
@@ -70,7 +76,15 @@ func exportBackup(ctx *views.Context) error {
 		}
 		data, err := storageutil.ReadURL(reqCtx, url)
 		if err != nil {
-			continue // file hilang di storage; jangan gagalkan seluruh backup
+			// Fallback: coba baca langsung dari disk lokal (mis. base URL
+			// menunjuk host publik yang tidak bisa diakses dari server).
+			data, err = os.ReadFile(filepath.Join(storageRoot, filepath.FromSlash(key)))
+		}
+		if err != nil {
+			// File dirujuk database tapi tidak ditemukan di storage —
+			// catat di manifest agar terlihat, jangan gagalkan backup.
+			missing = append(missing, missingFile{Key: key, URL: url})
+			continue
 		}
 		fw, err := zw.Create(name)
 		if err != nil {
@@ -83,7 +97,6 @@ func exportBackup(ctx *views.Context) error {
 
 	// 2) Sapu direktori storage lokal (provider lokal) untuk file yang tidak
 	//    terekam di kolom URL mana pun.
-	storageRoot := storageRootPath()
 	_ = filepath.Walk(storageRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
@@ -110,6 +123,19 @@ func exportBackup(ctx *views.Context) error {
 		}
 		return nil
 	})
+
+	// 3) Manifest: transparan soal apa yang ikut dan apa yang tidak ditemukan,
+	//    supaya file hilang tidak lolos tanpa terdeteksi.
+	manifest := map[string]any{
+		"files_included": len(written),
+		"files_missing":  missing,
+	}
+	if mw, err := zw.Create("manifest.json"); err == nil {
+		if raw, err := json.MarshalIndent(manifest, "", "  "); err == nil {
+			_, _ = mw.Write(raw)
+		}
+	}
+
 	if err := zw.Close(); err != nil {
 		return ctx.Error(500, err.Error())
 	}
