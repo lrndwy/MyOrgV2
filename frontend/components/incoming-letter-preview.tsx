@@ -46,7 +46,7 @@ function OriginalPreview({
       <iframe
         title="Preview file asli"
         src={previewUrl}
-        className="h-[min(420px,55vh)] w-full rounded-md border bg-muted"
+        className="h-[min(700px,80vh)] w-full rounded-md border bg-muted"
       />
     )
   }
@@ -57,19 +57,19 @@ function OriginalPreview({
       <img
         src={previewUrl}
         alt={file.name}
-        className="max-h-[min(420px,55vh)] w-full rounded-md border bg-muted object-contain"
+        className="max-h-[min(700px,80vh)] w-full rounded-md border bg-muted object-contain"
       />
     )
   }
 
   if (previewKind === "docx") {
     return (
-      <FilePreview url={previewUrl} fileName={file.name} className="h-[min(420px,55vh)]" />
+      <FilePreview url={previewUrl} fileName={file.name} className="h-[min(700px,80vh)]" />
     )
   }
 
   return (
-    <div className="flex h-[min(280px,40vh)] flex-col items-center justify-center gap-3 rounded-md border bg-muted/40 p-6 text-center">
+    <div className="flex h-[min(400px,60vh)] flex-col items-center justify-center gap-3 rounded-md border bg-muted/40 p-6 text-center">
       <FileTextIcon className="size-10 text-muted-foreground opacity-60" />
       <div>
         <p className="text-sm font-medium">{file.name}</p>
@@ -94,7 +94,7 @@ function ParsePreviewPanel({
 }: Pick<IncomingLetterPreviewProps, "parsePreview" | "parsing">) {
   if (parsing) {
     return (
-      <div className="flex h-[min(420px,55vh)] items-center justify-center rounded-md border bg-muted/30">
+      <div className="flex h-[min(700px,80vh)] items-center justify-center rounded-md border bg-muted/30">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2Icon className="size-4 animate-spin" />
           Memproses file...
@@ -105,7 +105,7 @@ function ParsePreviewPanel({
 
   if (!parsePreview) {
     return (
-      <div className="flex h-[min(280px,40vh)] items-center justify-center rounded-md border border-dashed bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+      <div className="flex h-[min(400px,60vh)] items-center justify-center rounded-md border border-dashed bg-muted/20 p-4 text-center text-sm text-muted-foreground">
         Hasil parse akan muncul setelah file diunggah.
       </div>
     )
@@ -122,7 +122,7 @@ function ParsePreviewPanel({
           : parsePreview.method ?? null
 
   return (
-    <div className="flex h-[min(420px,55vh)] min-h-0 flex-col overflow-hidden rounded-md border">
+    <div className="flex h-[min(700px,80vh)] min-h-0 flex-col overflow-hidden rounded-md border">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Hasil Parse

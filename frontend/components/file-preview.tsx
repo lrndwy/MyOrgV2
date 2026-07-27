@@ -38,7 +38,7 @@ export function FilePreview({ url, fileName, className }: FilePreviewProps) {
       <iframe
         title={fileName}
         src={url}
-        className={cn("h-[60vh] w-full rounded-md border", className)}
+        className={cn("h-[80vh] w-full rounded-md border", className)}
       />
     )
   }
@@ -159,7 +159,7 @@ function DocxPreview({ url, className }: { url: string; className?: string }) {
           status === "loading" && "invisible",
           status === "error" && "hidden"
         )}
-        style={{ maxHeight: "60vh" }}
+        style={{ maxHeight: "80vh" }}
       />
     </div>
   )
@@ -289,7 +289,7 @@ function XlsxPreview({ url, className }: { url: string; className?: string }) {
           status === "loading" && "invisible",
           status === "error" && "hidden"
         )}
-        style={{ maxHeight: "60vh" }}
+        style={{ maxHeight: "80vh" }}
       />
     </div>
   )
