@@ -23,6 +23,7 @@ RUN apk add --no-cache ca-certificates
 
 COPY --from=build /out/app /app/app
 COPY docker-entrypoint.sh /app/entrypoint.sh
+COPY /migrations/* /app/migrations/
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8080
