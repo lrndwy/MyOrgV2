@@ -17,6 +17,8 @@ services:
         condition: service_healthy
     environment:
       OCR_SERVICE_URL: http://ocr:8090
+    volumes:
+      - gokil_storage:/app/storage
     restart: unless-stopped
     networks:
       - internal
@@ -88,6 +90,7 @@ volumes:
   db_data:
   redis_data:
   minio_data:
+  gokil_storage:
 
 networks:
   internal:
