@@ -28,6 +28,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "division", id,
+			"Memperbarui divisi", c.Request.RemoteAddr)
 		return c.Success(200, "division updated", d)
 	})(ctx)
 }
@@ -46,6 +48,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.DivisionService{}).Delete(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "division", id,
+			"Menghapus divisi", c.Request.RemoteAddr)
 		return c.Success(200, "division deleted", nil)
 	})(ctx)
 }

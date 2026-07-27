@@ -59,6 +59,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "letter_template", id,
+			"Memperbarui template surat", c.Request.RemoteAddr)
 		return c.Success(200, "template updated", t)
 	})(ctx)
 }
@@ -78,6 +80,8 @@ func DELETE(ctx *views.Context) error {
 		if err := svc.DeleteTemplate(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "letter_template", id,
+			"Menghapus template surat", c.Request.RemoteAddr)
 		return c.Success(200, "template deleted", nil)
 	})(ctx)
 }

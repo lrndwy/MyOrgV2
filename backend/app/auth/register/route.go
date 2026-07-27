@@ -21,5 +21,7 @@ func POST(ctx *views.Context) error {
 	if err != nil {
 		return ctx.Error(400, err.Error())
 	}
+	services.LogActivity(ctx.Request.Context(), user.ID, "create", "user", user.ID,
+		"Registrasi akun baru", ctx.Request.RemoteAddr)
 	return ctx.Success(201, "registered", user)
 }

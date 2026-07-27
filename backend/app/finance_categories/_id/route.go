@@ -28,6 +28,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "finance_category", id,
+			"Memperbarui kategori keuangan", c.Request.RemoteAddr)
 		return c.Success(200, "category updated", cat)
 	})(ctx)
 }
@@ -46,6 +48,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.FinanceService{}).DeleteCategory(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "finance_category", id,
+			"Menghapus kategori keuangan", c.Request.RemoteAddr)
 		return c.Success(200, "category deleted", nil)
 	})(ctx)
 }

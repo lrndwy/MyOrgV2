@@ -31,6 +31,8 @@ func POST(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "user", id,
+			"Mengupload avatar pengguna", c.Request.RemoteAddr)
 		return c.Success(200, "avatar uploaded", map[string]any{"avatar_url": url})
 	})(ctx)
 }

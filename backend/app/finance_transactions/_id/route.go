@@ -28,6 +28,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "finance_transaction", id,
+			"Memperbarui transaksi keuangan", c.Request.RemoteAddr)
 		return c.Success(200, "transaction updated", t)
 	})(ctx)
 }

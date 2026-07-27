@@ -1,6 +1,8 @@
 package bulk_delete
 
 import (
+	"strconv"
+
 	"backend/internal/auth"
 	"backend/internal/permission"
 	"backend/services"
@@ -28,6 +30,8 @@ func POST(ctx *views.Context) error {
 				deleted++
 			}
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "letter", 0,
+			"Menghapus "+strconv.Itoa(deleted)+" surat secara massal", c.Request.RemoteAddr)
 		return c.Success(200, "letters deleted", map[string]any{"deleted": deleted})
 	})(ctx)
 }

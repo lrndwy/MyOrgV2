@@ -3,6 +3,7 @@ package subscribe
 import (
 	"backend/internal/auth"
 	"backend/models"
+	"backend/services"
 
 	"github.com/lrndwy/gokil/orm"
 	"github.com/lrndwy/gokil/views"
@@ -54,6 +55,8 @@ func createSubscription(ctx *views.Context) error {
 		existing.UserID = user.ID
 		existing.P256dh = body.P256dh
 		existing.Auth = body.Auth
+		services.LogActivity(ctx.Request.Context(), user.ID, "update", "push_subscription", existing.ID,
+			"Memperbarui langganan notifikasi", ctx.Request.RemoteAddr)
 		return ctx.OK("subscription updated", existing)
 	}
 	sub, err := orm.Create(ctx.Request.Context(), &models.PushSubscription{
@@ -65,6 +68,8 @@ func createSubscription(ctx *views.Context) error {
 	if err != nil {
 		return err
 	}
+	services.LogActivity(ctx.Request.Context(), user.ID, "create", "push_subscription", sub.ID,
+		"Berlangganan notifikasi", ctx.Request.RemoteAddr)
 	return ctx.Created("subscription created", sub)
 }
 
@@ -80,5 +85,7 @@ func deleteSubscription(ctx *views.Context) error {
 		Delete(); err != nil {
 		return err
 	}
+	services.LogActivity(ctx.Request.Context(), user.ID, "delete", "push_subscription", 0,
+		"Berhenti berlangganan notifikasi", ctx.Request.RemoteAddr)
 	return ctx.OK("subscription deleted", nil)
 }

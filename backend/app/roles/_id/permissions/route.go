@@ -50,6 +50,8 @@ func PUT(ctx *views.Context) error {
 		if err := (services.RoleService{}).ReplacePermissions(c.Request.Context(), id, body.PermissionIDs); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "role", id,
+			"Mengubah permission role", c.Request.RemoteAddr)
 		return c.Success(200, "permissions updated", nil)
 	})(ctx)
 }

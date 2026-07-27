@@ -31,6 +31,8 @@ func POST(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(400, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "create", "attendance", a.ID,
+			"Mengisi absensi event", c.Request.RemoteAddr)
 		return c.Success(201, "attendance recorded", a)
 	})(ctx)
 }

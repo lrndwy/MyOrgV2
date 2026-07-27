@@ -32,6 +32,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(400, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "permission_request", id,
+			body.Action+" pengajuan izin", c.Request.RemoteAddr)
 		return c.Success(200, "permission reviewed", pr)
 	})(ctx)
 }

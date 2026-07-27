@@ -28,6 +28,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "violation_type", id,
+			"Mengubah tipe pelanggaran", c.Request.RemoteAddr)
 		return c.Success(200, "violation type updated", v)
 	})(ctx)
 }
@@ -47,6 +49,8 @@ func DELETE(ctx *views.Context) error {
 		if err := svc.Delete(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "violation_type", id,
+			"Menghapus tipe pelanggaran", c.Request.RemoteAddr)
 		return c.Success(200, "violation type deleted", nil)
 	})(ctx)
 }

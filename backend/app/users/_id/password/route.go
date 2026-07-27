@@ -29,6 +29,8 @@ func PUT(ctx *views.Context) error {
 		if err := (services.UserService{}).ChangePassword(c.Request.Context(), id, body.NewPassword); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "user", id,
+			"Mengubah password pengguna", c.Request.RemoteAddr)
 		return c.Success(200, "password updated", nil)
 	})(ctx)
 }

@@ -27,6 +27,8 @@ func POST(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(400, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "create", "permission_request", pr.ID,
+			"Mengajukan izin event", c.Request.RemoteAddr)
 		return c.Success(201, "permission request created", pr)
 	})(ctx)
 }

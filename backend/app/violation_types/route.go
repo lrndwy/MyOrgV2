@@ -39,6 +39,8 @@ func POST(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "create", "violation_type", v.ID,
+			"Membuat tipe pelanggaran "+v.Name, c.Request.RemoteAddr)
 		return c.Success(201, "violation type created", v)
 	})(ctx)
 }

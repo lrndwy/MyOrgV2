@@ -30,6 +30,8 @@ func PUT(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(400, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "update", "storage_file", id,
+			"Memindahkan file", c.Request.RemoteAddr)
 		return c.Success(200, "file moved", f)
 	})(ctx)
 }
@@ -48,6 +50,8 @@ func DELETE(ctx *views.Context) error {
 		if err := (services.StorageService{}).DeleteFile(c.Request.Context(), id); err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "storage_file", id,
+			"Menghapus file", c.Request.RemoteAddr)
 		return c.Success(200, "file deleted", nil)
 	})(ctx)
 }

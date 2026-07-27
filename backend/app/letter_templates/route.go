@@ -61,6 +61,8 @@ func POST(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "create", "letter_template", created.ID,
+			"Membuat template surat", c.Request.RemoteAddr)
 		return c.Success(201, "template created", created)
 	})(ctx)
 }

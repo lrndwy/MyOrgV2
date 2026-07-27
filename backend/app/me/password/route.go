@@ -23,5 +23,7 @@ func putPassword(ctx *views.Context) error {
 	if err := (services.ProfileService{}).ChangePassword(ctx.Request.Context(), user.ID, body.OldPassword, body.NewPassword); err != nil {
 		return ctx.Error(400, err.Error())
 	}
+	services.LogActivity(ctx.Request.Context(), user.ID, "update", "user", user.ID,
+		"Mengubah password sendiri", ctx.Request.RemoteAddr)
 	return ctx.Success(200, "password updated", nil)
 }

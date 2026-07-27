@@ -66,5 +66,7 @@ func putSettings(ctx *views.Context) error {
 	if err != nil {
 		return ctx.Error(500, err.Error())
 	}
+	services.LogActivity(ctx.Request.Context(), user.ID, "update", "settings", 0,
+		"Memperbarui pengaturan", ctx.Request.RemoteAddr)
 	return ctx.Success(200, "settings updated", s)
 }

@@ -1,6 +1,8 @@
 package bulk_delete
 
 import (
+	"strconv"
+
 	"backend/internal/auth"
 	"backend/internal/permission"
 	"backend/services"
@@ -31,6 +33,8 @@ func POST(ctx *views.Context) error {
 				deleted++
 			}
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "delete", "storage_file", 0,
+			"Menghapus "+strconv.Itoa(deleted)+" file secara massal", c.Request.RemoteAddr)
 		return c.Success(200, "files deleted", map[string]any{
 			"deleted": deleted,
 			"total":   len(body.IDs),

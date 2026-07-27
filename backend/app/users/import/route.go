@@ -3,6 +3,7 @@ package importpkg
 import (
 	"encoding/csv"
 	"io"
+	"strconv"
 	"strings"
 
 	"backend/internal/auth"
@@ -52,6 +53,8 @@ func POST(ctx *views.Context) error {
 			rows = append(rows, row)
 		}
 		success, failures := services.UserService{}.ImportCSV(c.Request.Context(), rows)
+		services.LogActivity(c.Request.Context(), user.ID, "create", "user", 0,
+			"Import "+strconv.Itoa(success)+" pengguna dari CSV", c.Request.RemoteAddr)
 		return c.Success(200, "import complete", map[string]any{
 			"success_count": success, "failures": failures,
 		})

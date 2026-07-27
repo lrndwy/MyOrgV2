@@ -81,6 +81,8 @@ func POST(ctx *views.Context) error {
 		if err != nil {
 			return c.Error(500, err.Error())
 		}
+		services.LogActivity(c.Request.Context(), user.ID, "create", "storage_file", f.ID,
+			"Mengupload file "+hdr.Filename, c.Request.RemoteAddr)
 		return c.Success(201, "file uploaded", f)
 	})(ctx)
 }
