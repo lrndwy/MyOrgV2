@@ -18,6 +18,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string
   onConfirm: () => void
   destructive?: boolean
+  confirming?: boolean
 }
 
 export function ConfirmDialog({
@@ -28,6 +29,7 @@ export function ConfirmDialog({
   confirmLabel = "Hapus",
   onConfirm,
   destructive = true,
+  confirming = false,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -37,17 +39,18 @@ export function ConfirmDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={confirming}>
             Batal
           </Button>
           <Button
             variant={destructive ? "destructive" : "default"}
             onClick={() => {
               onConfirm()
-              onOpenChange(false)
+              // onOpenChange(false) // This is now handled by the parent component after async operation
             }}
+            disabled={confirming}
           >
-            {confirmLabel}
+            {confirming ? "Memproses..." : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

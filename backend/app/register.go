@@ -57,6 +57,7 @@ import (
 	app_settings "backend/app/settings"
 	app_storage_files "backend/app/storage/files"
 	app_storage_files_id "backend/app/storage/files/_id"
+	app_storage_files_bulk_delete "backend/app/storage/files/bulk_delete"
 	app_storage_folders "backend/app/storage/folders"
 	app_storage_folders_id "backend/app/storage/folders/_id"
 	app_users "backend/app/users"
@@ -160,6 +161,7 @@ func init() {
 	framework.RegisterRoute("POST", "/storage/files", app_storage_files.POST)
 	framework.RegisterRoute("PUT", "/storage/files/:id", app_storage_files_id.PUT)
 	framework.RegisterRoute("DELETE", "/storage/files/:id", app_storage_files_id.DELETE)
+	framework.RegisterRoute("POST", "/storage/files/bulk_delete", app_storage_files_bulk_delete.POST)
 	framework.RegisterRoute("GET", "/storage/folders", app_storage_folders.GET)
 	framework.RegisterRoute("POST", "/storage/folders", app_storage_folders.POST)
 	framework.RegisterRoute("DELETE", "/storage/folders/:id", app_storage_folders_id.DELETE)

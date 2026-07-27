@@ -212,6 +212,10 @@ export function CloudStorageBrowser() {
   const [deleteFolderTarget, setDeleteFolderTarget] =
     useState<StorageFolder | null>(null)
   const [dropFolderId, setDropFolderId] = useState<number | null>(null)
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(new Set())
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false)
+  const [deletingBulk, setDeletingBulk] = useState(false)
+  const [deletingFolder, setDeletingFolder] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const folders = useApi(() =>
@@ -220,10 +224,12 @@ export function CloudStorageBrowser() {
     ).then(unwrapList)
   )
   const files = useApi(
-    () =>
-      apiRequest<StorageFile[] | { items: StorageFile[] }>("/storage/files", {
+    () => {
+      setSelectedFileIds(new Set())
+      return apiRequest<StorageFile[] | { items: StorageFile[] }>("/storage/files", {
         params: currentFolderId ? { folder_id: currentFolderId } : undefined,
-      }).then(unwrapList),
+      }).then(unwrapList)
+    },
     [currentFolderId]
   )
 
@@ -345,6 +351,7 @@ export function CloudStorageBrowser() {
 
   async function deleteFolder() {
     if (!deleteFolderTarget) return
+    setDeletingFolder(true)
     try {
       await apiRequest(`/storage/folders/${deleteFolderTarget.id}`, {
         method: "DELETE",
@@ -358,6 +365,7 @@ export function CloudStorageBrowser() {
       toast.error(err instanceof Error ? err.message : "Gagal menghapus folder")
     } finally {
       setDeleteFolderTarget(null)
+      setDeletingFolder(false)
     }
   }
 
@@ -366,10 +374,60 @@ export function CloudStorageBrowser() {
       await apiRequest(`/storage/files/${id}`, { method: "DELETE" })
       toast.success("File dihapus")
       if (previewFile?.id === id) setPreviewFile(null)
+      setSelectedFileIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
       void files.refetch()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal hapus")
     }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedFileIds.size === 0) return
+    setDeletingBulk(true)
+    try {
+      await apiRequest("/storage/files/bulk_delete", {
+        method: "POST",
+        body: { ids: Array.from(selectedFileIds) },
+      })
+      toast.success(`${selectedFileIds.size} file berhasil dihapus`)
+      setSelectedFileIds(new Set())
+      setBulkDeleteConfirmOpen(false)
+      void files.refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Gagal menghapus file terpilih")
+    } finally {
+      setDeletingBulk(false)
+    }
+  }
+
+  function toggleSelectFile(id: number) {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllFiles() {
+    setSelectedFileIds((prev) => {
+      const allVisibleIds = visibleFiles.map((f) => f.id)
+      const allSelected = allVisibleIds.every((id) => prev.has(id))
+      const next = new Set(prev)
+      if (allSelected) {
+        allVisibleIds.forEach((id) => next.delete(id))
+      } else {
+        allVisibleIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
   }
 
   function FileActions({
@@ -595,6 +653,18 @@ export function CloudStorageBrowser() {
               <LayoutListIcon className="size-4" />
             </Button>
           </div>
+
+          {selectedFileIds.size > 0 ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteConfirmOpen(true)}
+            >
+              <Trash2Icon className="size-4" />
+              Hapus ({selectedFileIds.size})
+            </Button>
+          ) : null}
 
           <Button
             type="button"
@@ -915,15 +985,31 @@ export function CloudStorageBrowser() {
                               )
                               e.dataTransfer.effectAllowed = "move"
                             }}
-                            className="group flex cursor-grab flex-col overflow-hidden rounded-xl border bg-background transition-shadow hover:shadow-md active:cursor-grabbing"
+                             className={cn(
+                              "group relative flex cursor-grab flex-col overflow-hidden rounded-xl border bg-background transition-shadow hover:shadow-md active:cursor-grabbing",
+                              selectedFileIds.has(file.id) && "border-primary ring-1 ring-primary"
+                            )}
                           >
-                            <button
-                              type="button"
-                              onClick={() => setPreviewFile(file)}
-                              className="aspect-[4/3] w-full overflow-hidden border-b bg-muted/30"
-                            >
-                              <FileThumbnail file={file} />
-                            </button>
+                            <div className="relative aspect-[4/3] w-full overflow-hidden border-b bg-muted/30">
+                              <div className="absolute top-2 left-2 z-10">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedFileIds.has(file.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation()
+                                    toggleSelectFile(file.id)
+                                  }}
+                                  className="size-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewFile(file)}
+                                className="size-full"
+                              >
+                                <FileThumbnail file={file} />
+                              </button>
+                            </div>
                             <div className="flex items-start gap-2 p-3">
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-sm font-medium">
@@ -940,9 +1026,20 @@ export function CloudStorageBrowser() {
                         ))}
                       </div>
                     ) : (
-                      <Table>
+                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-[40px]">
+                              <input
+                                type="checkbox"
+                                checked={
+                                  visibleFiles.length > 0 &&
+                                  visibleFiles.every((f) => selectedFileIds.has(f.id))
+                                }
+                                onChange={toggleSelectAllFiles}
+                                className="size-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary"
+                              />
+                            </TableHead>
                             <TableHead>Nama</TableHead>
                             <TableHead className="hidden sm:table-cell">
                               Ukuran
@@ -970,9 +1067,20 @@ export function CloudStorageBrowser() {
                                   )
                                   e.dataTransfer.effectAllowed = "move"
                                 }}
-                                className="cursor-pointer"
+                                className={cn(
+                                  "cursor-pointer",
+                                  selectedFileIds.has(file.id) && "bg-muted/50"
+                                )}
                                 onClick={() => setPreviewFile(file)}
                               >
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedFileIds.has(file.id)}
+                                    onChange={() => toggleSelectFile(file.id)}
+                                    className="size-4 cursor-pointer rounded border-gray-300 text-primary focus:ring-primary"
+                                  />
+                                </TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-2">
                                     <Icon className="size-4 shrink-0 text-muted-foreground" />
@@ -1069,7 +1177,7 @@ export function CloudStorageBrowser() {
         />
       </FormDialog>
 
-      <ConfirmDialog
+       <ConfirmDialog
         open={deleteFolderTarget != null}
         onOpenChange={(v) => {
           if (!v) setDeleteFolderTarget(null)
@@ -1077,6 +1185,17 @@ export function CloudStorageBrowser() {
         title={`Hapus Folder "${deleteFolderTarget?.name ?? ""}"`}
         description="Folder beserta SELURUH subfolder dan file di dalamnya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan."
         onConfirm={deleteFolder}
+        confirming={deletingFolder}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirmOpen}
+        onOpenChange={setBulkDeleteConfirmOpen}
+        title="Hapus File Terpilih"
+        description={`Apakah Anda yakin ingin menghapus ${selectedFileIds.size} file yang terpilih secara permanen? Tindakan ini tidak dapat dibatalkan.`}
+        onConfirm={handleBulkDelete}
+        confirming={deletingBulk}
+        confirmLabel="Hapus"
       />
 
       <FilePreviewDialog
