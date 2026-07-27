@@ -38,12 +38,11 @@ func POST(ctx *views.Context) error {
 		if err := c.ParseMultipart(20 << 20); err != nil {
 			return c.Error(400, err.Error())
 		}
-		categoryID, _ := models.ParseID(c.Request.FormValue("category_id"))
 		name := c.Request.FormValue("name")
-		if name == "" || categoryID == 0 {
-			return c.Error(400, "name and category_id required")
+		if name == "" {
+			return c.Error(400, "name required")
 		}
-		t := &models.LetterTemplate{Name: name, CategoryID: categoryID}
+		t := &models.LetterTemplate{Name: name}
 		file, hdr, err := c.FormFile("template")
 		if err == nil && file != nil && hdr != nil {
 			defer file.Close()

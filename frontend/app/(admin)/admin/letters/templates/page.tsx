@@ -12,7 +12,6 @@ import {
 } from "@/components/advanced-table"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { FilePreviewDialog } from "@/components/file-preview-dialog"
-import { FormSelect } from "@/components/form-select"
 import { Button } from "@/components/ui/button"
 import {
   Field,
@@ -24,17 +23,12 @@ import { useApi } from "@/hooks/use-api"
 import { apiRequest } from "@/lib/api"
 import { unwrapList } from "@/lib/format"
 import { storageUrl } from "@/lib/storage-url"
-import type { LetterCategory, LetterTemplate } from "@/lib/types"
+import type { LetterTemplate } from "@/lib/types"
 
 export default function LetterTemplatesPage() {
   const { data, loading, error, refetch } = useApi(() =>
     apiRequest<LetterTemplate[] | { items: LetterTemplate[] }>(
       "/letter_templates"
-    ).then(unwrapList)
-  )
-  const categories = useApi(() =>
-    apiRequest<LetterCategory[] | { items: LetterCategory[] }>(
-      "/letter_categories"
     ).then(unwrapList)
   )
 
@@ -43,25 +37,11 @@ export default function LetterTemplatesPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState("")
-  const [categoryId, setCategoryId] = useState("")
   const [templateFile, setTemplateFile] = useState<File | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState<LetterTemplate | null>(null)
   const [editId, setEditId] = useState<number | null>(null)
 
   const rows = useMemo(() => data ?? [], [data])
-  const categoryMap = useMemo(
-    () =>
-      new Map((categories.data ?? []).map((c) => [c.id, c.name])),
-    [categories.data]
-  )
-  const categoryOptions = useMemo(
-    () =>
-      (categories.data ?? []).map((c) => ({
-        value: String(c.id),
-        label: c.name,
-      })),
-    [categories.data]
-  )
 
   async function handleCreate() {
     if (!templateFile) {
@@ -72,12 +52,10 @@ export default function LetterTemplatesPage() {
     try {
       const body = new FormData()
       body.append("name", name)
-      body.append("category_id", categoryId)
       body.append("template", templateFile)
       await apiRequest("/letter_templates", { method: "POST", body })
       setOpen(false)
       setName("")
-      setCategoryId("")
       setTemplateFile(null)
       toast.success("Template ditambahkan")
       void refetch()
@@ -91,7 +69,6 @@ export default function LetterTemplatesPage() {
   function openEdit(tpl: LetterTemplate) {
     setEditId(tpl.id)
     setName(tpl.name)
-    setCategoryId(String(tpl.category_id))
     setTemplateFile(null)
     setEditOpen(true)
   }
@@ -102,13 +79,11 @@ export default function LetterTemplatesPage() {
     try {
       const body = new FormData()
       body.append("name", name)
-      body.append("category_id", categoryId)
       if (templateFile) body.append("template", templateFile)
       await apiRequest(`/letter_templates/${editId}`, { method: "PUT", body })
       setEditOpen(false)
       setEditId(null)
       setName("")
-      setCategoryId("")
       setTemplateFile(null)
       toast.success("Template diperbarui")
       void refetch()
@@ -138,12 +113,6 @@ export default function LetterTemplatesPage() {
         id: "nama",
         accessorKey: "name",
         header: sortableHeader("Nama"),
-      },
-      {
-        id: "kategori",
-        accessorKey: "category_id",
-        header: "Kategori",
-        cell: ({ row }) => categoryMap.get(row.original.category_id) ?? "—",
       },
       {
         id: "aksi",
@@ -195,7 +164,7 @@ export default function LetterTemplatesPage() {
         },
       },
     ],
-    [categoryMap]
+    []
   )
 
   return (
@@ -230,15 +199,6 @@ export default function LetterTemplatesPage() {
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </Field>
           <Field>
-            <FieldLabel>Kategori</FieldLabel>
-            <FormSelect
-              value={categoryId}
-              onValueChange={setCategoryId}
-              options={categoryOptions}
-              placeholder="Pilih kategori"
-            />
-          </Field>
-          <Field>
             <FieldLabel>File .docx</FieldLabel>
             <Input
               type="file"
@@ -261,15 +221,6 @@ export default function LetterTemplatesPage() {
           <Field>
             <FieldLabel>Nama Template</FieldLabel>
             <Input value={name} onChange={(e) => setName(e.target.value)} required />
-          </Field>
-          <Field>
-            <FieldLabel>Kategori</FieldLabel>
-            <FormSelect
-              value={categoryId}
-              onValueChange={setCategoryId}
-              options={categoryOptions}
-              placeholder="Pilih kategori"
-            />
           </Field>
           <Field>
             <FieldLabel>File .docx (kosongkan jika tidak diubah)</FieldLabel>
@@ -295,7 +246,7 @@ export default function LetterTemplatesPage() {
         onOpenChange={(open) => !open && setPreviewTemplate(null)}
         url={previewTemplate?.template_url ? storageUrl(previewTemplate.template_url) : ""}
         fileName={previewTemplate ? `${previewTemplate.name}.docx` : ""}
-        kindLabel={previewTemplate ? (categoryMap.get(previewTemplate.category_id) ?? "Template") : undefined}
+        kindLabel="Template"
       />
     </AdvancedResourcePage>
   )

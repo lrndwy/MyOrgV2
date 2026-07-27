@@ -33,11 +33,6 @@ func PUT(ctx *views.Context) error {
 			if v := c.Request.FormValue("name"); v != "" {
 				values["name"] = v
 			}
-			if v := c.Request.FormValue("category_id"); v != "" {
-				if catID, err := models.ParseID(v); err == nil {
-					values["category_id"] = catID
-				}
-			}
 			file, hdr, err := c.FormFile("template")
 			if err == nil && file != nil && hdr != nil {
 				defer file.Close()

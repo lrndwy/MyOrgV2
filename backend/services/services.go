@@ -999,14 +999,6 @@ func (LetterService) CreateOutgoing(ctx context.Context, letter *models.Letter, 
 	var created *models.Letter
 	err := orm.WithTx(ctx, func(txCtx context.Context, _ *orm.Tx) error {
 		catID := letter.CategoryID
-		if templateID > 0 {
-			tmpl, err := orm.GetByID[models.LetterTemplate](txCtx, templateID)
-			if err != nil {
-				return err
-			}
-			catID = tmpl.CategoryID
-			letter.CategoryID = catID
-		}
 		cat, err := orm.Objects[models.LetterCategory](txCtx).
 			Filter("id", catID).ForUpdate().First()
 		if err != nil {

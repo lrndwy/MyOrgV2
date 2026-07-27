@@ -7,7 +7,6 @@ import (
 	"backend/internal/storageutil"
 	"backend/models"
 	"backend/services"
-	"time"
 
 	"github.com/lrndwy/gokil/views"
 )
@@ -45,22 +44,9 @@ func GET(ctx *views.Context) error {
 			}
 			userVars = append(userVars, v)
 		}
-		cat, _ := services.LetterService{}.GetCategory(c.Request.Context(), t.CategoryID)
-		preview := ""
-		numberPlaceholders := []string{}
-		numberFormatTemplate := ""
-		if cat != nil {
-			numberFormatTemplate = cat.NumberFormatTemplate
-			numberPlaceholders = services.ExtractCustomPlaceholders(cat.NumberFormatTemplate)
-			preview, _ = services.LetterService{}.PreviewNumber(c.Request.Context(), cat.ID, time.Now(), nil)
-		}
 		return c.Success(200, "template variables", map[string]any{
-			"variables":              vars,
-			"user_variables":         userVars,
-			"next_number_preview":    preview,
-			"category_id":            t.CategoryID,
-			"number_format_template": numberFormatTemplate,
-			"number_placeholders":    numberPlaceholders,
+			"variables":      vars,
+			"user_variables": userVars,
 		})
 	})(ctx)
 }

@@ -88,7 +88,6 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
   const [parsePreview, setParsePreview] = useState<ParsePreview | null>(null)
   const [templateVars, setTemplateVars] = useState<string[]>([])
   const [numberPlaceholders, setNumberPlaceholders] = useState<string[]>([])
-  const [categoryId, setCategoryId] = useState<number | null>(null)
   const [numberSegmentValues, setNumberSegmentValues] = useState<
     Record<string, string>
   >({})
@@ -180,67 +179,26 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
     if (!templateId) {
       setTemplateVars([])
       setVarValues({})
-      setNumberPlaceholders([])
-      setNumberSegmentValues({})
-      setCategoryId(null)
-      setNextNumberPreview(null)
       return
     }
     try {
       const res = await apiRequest<{
         variables?: string[]
         user_variables?: string[]
-        next_number_preview?: string
-        category_id?: number
-        number_format_template?: string
-        number_placeholders?: string[]
       }>(`/letter_templates/${templateId}/variables`)
-
-      let numberKeys = res.number_placeholders ?? []
-      let formatTemplate = res.number_format_template ?? ""
-
-      if (!numberKeys.length && formatTemplate) {
-        numberKeys = extractCustomNumberPlaceholders(formatTemplate)
-      }
-
-      const catId = res.category_id ?? null
-      if (!numberKeys.length && catId != null) {
-        let categoryList = categories.data ?? []
-        if (categoryList.length === 0) {
-          categoryList = await apiRequest<
-            LetterCategory[] | { items: LetterCategory[] }
-          >("/letter_categories").then(unwrapList)
-        }
-        const cat = categoryList.find((c) => c.id === catId)
-        if (cat?.number_format_template) {
-          formatTemplate = cat.number_format_template
-          numberKeys = extractCustomNumberPlaceholders(formatTemplate)
-        }
-      }
 
       const vars = filterDocxTemplateVars(
         res.user_variables ?? res.variables ?? [],
-        numberKeys
+        numberPlaceholders
       )
       setTemplateVars(vars)
-      setNumberPlaceholders(numberKeys)
-      setCategoryId(catId)
-      setNextNumberPreview(res.next_number_preview ?? null)
       const defaults: Record<string, string> = {}
       for (const v of vars) {
         defaults[v] = ""
       }
       setVarValues(defaults)
-      const segmentDefaults: Record<string, string> = {}
-      for (const key of numberKeys) {
-        segmentDefaults[key] = ""
-      }
-      setNumberSegmentValues(segmentDefaults)
     } catch (err) {
       setTemplateVars([])
-      setNumberPlaceholders([])
-      setCategoryId(null)
-      setNextNumberPreview(null)
       toast.error(
         err instanceof Error
           ? err.message
@@ -249,14 +207,57 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
     }
   }
 
+  async function loadCategoryInfo(categoryId: string) {
+    if (!categoryId) {
+      setNumberPlaceholders([])
+      setNumberSegmentValues({})
+      setNextNumberPreview(null)
+      return
+    }
+    try {
+      const res = await apiRequest<{
+        preview?: string
+        number_placeholders?: string[]
+        number_format_template?: string
+      }>(`/letter_categories/${categoryId}/preview_number`, {
+        method: "POST",
+        body: { segments: numberSegmentValues },
+      })
+
+      let numberKeys = res.number_placeholders ?? []
+      const formatTemplate = res.number_format_template ?? ""
+
+      if (!numberKeys.length && formatTemplate) {
+        numberKeys = extractCustomNumberPlaceholders(formatTemplate)
+      }
+
+      setNumberPlaceholders(numberKeys)
+      setNextNumberPreview(res.preview ?? null)
+      const segmentDefaults: Record<string, string> = {}
+      for (const key of numberKeys) {
+        segmentDefaults[key] = ""
+      }
+      setNumberSegmentValues(segmentDefaults)
+    } catch (err) {
+      setNumberPlaceholders([])
+      setNumberSegmentValues({})
+      setNextNumberPreview(null)
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Gagal memuat info kategori surat"
+      )
+    }
+  }
+
   useEffect(() => {
-    if (letterType !== "outgoing" || !categoryId) return
+    if (letterType !== "outgoing" || !form.category_id) return
     const timer = window.setTimeout(async () => {
       setPreviewLoading(true)
       try {
         const res = await apiRequest<{
           preview?: string
-        }>(`/letter_categories/${categoryId}/preview_number`, {
+        }>(`/letter_categories/${form.category_id}/preview_number`, {
           method: "POST",
           body: { segments: numberSegmentValues },
         })
@@ -268,11 +269,11 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
       }
     }, 300)
     return () => window.clearTimeout(timer)
-  }, [letterType, categoryId, numberSegmentValues])
+  }, [letterType, form.category_id, numberSegmentValues])
 
   async function handleCreate() {
-    if (letterType === "outgoing" && !form.template_id) {
-      toast.error("Pilih template surat terlebih dahulu")
+    if (letterType === "outgoing" && !form.category_id) {
+      toast.error("Pilih kategori surat terlebih dahulu")
       return
     }
     if (letterType === "outgoing") {
@@ -307,7 +308,8 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
           body: {
             type: "outgoing",
             subject: form.subject,
-            template_id: Number(form.template_id),
+            template_id: form.template_id ? Number(form.template_id) : undefined,
+            category_id: Number(form.category_id),
             recipient: pickRecipientFromVars(values),
             variable_values: values,
           },
@@ -338,7 +340,6 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
     setParsing(false)
     setTemplateVars([])
     setNumberPlaceholders([])
-    setCategoryId(null)
     setNumberSegmentValues({})
     setNextNumberPreview(null)
     setPreviewLoading(false)
@@ -629,7 +630,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
           ) : (
             <>
               <Field>
-                <FieldLabel>Template Surat</FieldLabel>
+                <FieldLabel>Template Surat (opsional)</FieldLabel>
                 <FormSelect
                   value={form.template_id}
                   onValueChange={(v) => {
@@ -640,7 +641,19 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
                   placeholder="Pilih template .docx"
                 />
               </Field>
-              {form.template_id && numberPlaceholders.length > 0 ? (
+              <Field>
+                <FieldLabel>Kategori</FieldLabel>
+                <FormSelect
+                  value={form.category_id}
+                  onValueChange={(v) => {
+                    setForm({ ...form, category_id: v })
+                    void loadCategoryInfo(v)
+                  }}
+                  options={categoryOptions}
+                  placeholder="Pilih kategori"
+                />
+              </Field>
+              {form.category_id && numberPlaceholders.length > 0 ? (
                 <>
                   <p className="text-sm font-medium">Segmen Nomor Surat</p>
                   {numberPlaceholders.map((key) => (
@@ -660,15 +673,15 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
                     </Field>
                   ))}
                 </>
-              ) : form.template_id ? (
+              ) : form.category_id ? (
                 <p className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-                  Kategori template ini belum memiliki segmen dinamis. Edit kategori
+                  Kategori ini belum memiliki segmen dinamis. Edit kategori
                   surat dan tambahkan placeholder seperti{" "}
                   <span className="font-mono">{"{unit}"}</span> pada Number Format
                   Template, lalu simpan.
                 </p>
               ) : null}
-              {form.template_id && nextNumberPreview ? (
+              {form.category_id && nextNumberPreview ? (
                 <div className="rounded-lg border bg-muted/30 px-3 py-2">
                   <p className="text-xs text-muted-foreground">
                     Preview nomor surat

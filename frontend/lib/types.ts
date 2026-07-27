@@ -245,7 +245,7 @@ export interface StorageFolder {
 export interface LetterTemplate {
   id: number
   name: string
-  category_id: number
+  category_id?: number | null
   template_url?: string
 }
 

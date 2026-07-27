@@ -44,12 +44,15 @@ func POST(ctx *views.Context) error {
 		}
 		cat, _ := services.LetterService{}.GetCategory(c.Request.Context(), id)
 		numberPlaceholders := []string{}
+		numberFormatTemplate := ""
 		if cat != nil {
 			numberPlaceholders = services.ExtractCustomPlaceholders(cat.NumberFormatTemplate)
+			numberFormatTemplate = cat.NumberFormatTemplate
 		}
 		return c.Success(200, "number preview", map[string]any{
-			"preview":             preview,
-			"number_placeholders": numberPlaceholders,
+			"preview":                preview,
+			"number_placeholders":    numberPlaceholders,
+			"number_format_template": numberFormatTemplate,
 		})
 	})(ctx)
 }

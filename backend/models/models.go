@@ -214,8 +214,8 @@ type LetterCategory struct {
 
 type LetterTemplate struct {
 	orm.BaseModel
-	Category     orm.BelongsTo[LetterCategory] `orm:"required" json:"-"`
-	CategoryID   int64                         `orm:"index" json:"category_id"`
+	Category     orm.BelongsTo[LetterCategory] `json:"-"`
+	CategoryID   *int64                        `orm:"null;index" json:"category_id,omitempty"`
 	Name         string                        `orm:"size:100" json:"name"`
 	TemplateURL  string                        `orm:"size:255" json:"template_url"`
 }

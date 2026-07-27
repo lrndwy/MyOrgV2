@@ -124,8 +124,8 @@ func POST(ctx *views.Context) error {
 		var result *models.Letter
 		var err error
 		if letterType == "outgoing" {
-			if templateID == 0 {
-				return c.Error(400, "template_id required for outgoing letters")
+			if letter.CategoryID == 0 {
+				return c.Error(400, "category_id required for outgoing letters")
 			}
 			result, err = services.LetterService{}.CreateOutgoing(c.Request.Context(), letter, templateID, user.ID)
 		} else {
