@@ -4,6 +4,7 @@ package app
 
 import (
 	app_activity_logs "backend/app/activity_logs"
+	app_admin_migrations "backend/app/admin/migrations"
 	app_announcements "backend/app/announcements"
 	app_announcements_id "backend/app/announcements/_id"
 	app_announcements_id_attachments "backend/app/announcements/_id/attachments"
@@ -78,6 +79,7 @@ import (
 
 func init() {
 	framework.RegisterRoute("GET", "/activity_logs", app_activity_logs.GET)
+	framework.RegisterRoute("GET", "/admin/migrations", app_admin_migrations.GET)
 	framework.RegisterRoute("GET", "/announcements", app_announcements.GET)
 	framework.RegisterRoute("POST", "/announcements", app_announcements.POST)
 	framework.RegisterRoute("PUT", "/announcements/:id", app_announcements_id.PUT)

@@ -36,6 +36,7 @@ func init() {
 		&StorageFolder{},
 		&StorageFile{},
 		&ActivityLog{},
+		&DBVersion{},
 	)
 }
 
