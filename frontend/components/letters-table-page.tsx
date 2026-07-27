@@ -276,16 +276,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
       toast.error("Pilih kategori surat terlebih dahulu")
       return
     }
-    if (letterType === "outgoing") {
-      for (const key of numberPlaceholders) {
-        if (!numberSegmentValues[key]?.trim()) {
-          toast.error(
-            `Segmen nomor surat "${humanizeNumberPlaceholder(key)}" wajib diisi`
-          )
-          return
-        }
-      }
-    }
+
     setSaving(true)
     try {
       if (letterType === "incoming") {
@@ -668,7 +659,6 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
                           })
                         }
                         placeholder={`Contoh: PAN-Stuband`}
-                        required
                       />
                     </Field>
                   ))}

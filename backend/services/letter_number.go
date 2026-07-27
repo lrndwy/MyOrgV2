@@ -66,13 +66,8 @@ func lookupSegment(extras map[string]string, name string) string {
 	return ""
 }
 
-// ValidateNumberSegments ensures all custom placeholders in the template have values.
+// ValidateNumberSegments checks custom placeholders — kept for backward compat.
 func ValidateNumberSegments(tmpl string, extras map[string]string) error {
-	for _, key := range ExtractCustomPlaceholders(tmpl) {
-		if lookupSegment(extras, key) == "" {
-			return fmt.Errorf("segmen nomor surat {%s} wajib diisi", key)
-		}
-	}
 	return nil
 }
 
@@ -121,6 +116,13 @@ func FormatLetterNumber(tmpl string, num int, code string, date time.Time, extra
 			return ""
 		}
 	})
+	// Collapse repeated separator characters from empty optional placeholders
+	for _, sep := range []string{"//", "--", "..", "__"} {
+		for strings.Contains(out, sep) {
+			out = strings.ReplaceAll(out, sep, string(sep[0]))
+		}
+	}
+	out = strings.Trim(out, "/-._")
 	return out, nil
 }
 

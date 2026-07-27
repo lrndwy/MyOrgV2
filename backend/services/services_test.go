@@ -48,9 +48,25 @@ func TestFormatLetterNumberZeroPadAndSegment(t *testing.T) {
 func TestFormatLetterNumberMissingSegmentError(t *testing.T) {
 	tmpl := "{number:3}/{code}/{unit}/HIMATRIS/{month_roman}/{year}"
 	date := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
-	_, err := FormatLetterNumber(tmpl, 1, "SPm-i", date, nil, false)
-	if err == nil {
-		t.Fatal("expected error for missing unit segment")
+	got, err := FormatLetterNumber(tmpl, 1, "SPm-i", date, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Missing segment should not error; double separators should collapse
+	if got != "001/SPm-i/HIMATRIS/VII/2026" {
+		t.Fatalf("got %q want %q", got, "001/SPm-i/HIMATRIS/VII/2026")
+	}
+}
+
+func TestFormatLetterNumberCollapseDoubleSlash(t *testing.T) {
+	tmpl := "{number:3}/{code}{tujuan}/{unit}/HIMATRIS/{month_roman}/{year}"
+	date := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	got, err := FormatLetterNumber(tmpl, 1, "SPm-i", date, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "001/SPm-i/HIMATRIS/VII/2026" {
+		t.Fatalf("got %q want %q", got, "001/SPm-i/HIMATRIS/VII/2026")
 	}
 }
 
