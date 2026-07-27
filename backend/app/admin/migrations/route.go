@@ -1,7 +1,6 @@
 package migrations
 
 import (
-	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,14 +16,14 @@ import (
 )
 
 type Migration struct {
-	ID        int64 `json:"id"`
-	Name      string `json:"name"`
-	Applied   bool `json:"applied"`
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Applied bool   `json:"applied"`
 }
 
 type DBVersion struct {
-	ID        int64 `orm:"pk;auto" json:"id"`
-	Version   int64 `orm:"unique" json:"version"`
+	ID        int64  `orm:"pk;auto" json:"id"`
+	Version   int64  `orm:"unique" json:"version"`
 	AppliedAt string `orm:"size:255" json:"applied_at"`
 }
 
@@ -35,25 +34,23 @@ func (DBVersion) TableName() string {
 func GET(ctx *views.Context) error {
 	return auth.RequireAuth(func(c *views.Context) error {
 		user, _ := auth.CurrentUser(c.Request.Context())
-		ok, _ := permission.UserHas(c, user, "admin.migrations.view") // New permission
+		ok, _ := permission.UserHas(c, user, "admin.migrations.view")
 		if !ok {
 			return c.Error(403, "forbidden")
 		}
 
-		migrationDir := "./migrations" // Assuming migrations are in backend/migrations
+		migrationDir := "./migrations"
 
-		// Read applied migrations from DB
 		appliedVersions := make(map[int64]bool)
-		var dbVersions []DBVersion
-		if err := orm.Objects[DBVersion](c.Request.Context()).All(&dbVersions); err == nil {
-			for _, v := range dbVersions {
+		all, err := orm.Objects[DBVersion](c.Request.Context()).All()
+		if err == nil {
+			for _, v := range all {
 				appliedVersions[v.Version] = true
 			}
 		}
 
-		// Read migration files from directory
 		var migrations []Migration
-		err := filepath.Walk(migrationDir, func(path string, info fs.FileInfo, err error) error {
+		err = filepath.Walk(migrationDir, func(path string, info fs.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
@@ -65,13 +62,12 @@ func GET(ctx *views.Context) error {
 				versionStr := parts[0]
 				version, err := strconv.ParseInt(versionStr, 10, 64)
 				if err != nil {
-					return nil // Skip if not a valid version number
+					return nil
 				}
-
 				migrations = append(migrations, Migration{
-					ID:        version,
-					Name:      info.Name(),
-					Applied:   appliedVersions[version],
+					ID:      version,
+					Name:    info.Name(),
+					Applied: appliedVersions[version],
 				})
 			}
 			return nil
@@ -81,7 +77,6 @@ func GET(ctx *views.Context) error {
 			return c.Error(500, err.Error())
 		}
 
-		// Sort migrations by ID
 		sort.Slice(migrations, func(i, j int) bool {
 			return migrations[i].ID < migrations[j].ID
 		})
