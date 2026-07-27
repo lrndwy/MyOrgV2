@@ -19,9 +19,10 @@ CREATE TABLE IF NOT EXISTS "violation_type" (
     "description" TEXT NOT NULL,
     "sp_level" VARCHAR(20) NOT NULL
 );
+ALTER TABLE "storage_file" DROP CONSTRAINT IF EXISTS "storage_file_created_by_id_fk";
 ALTER TABLE "storage_file" ADD CONSTRAINT "storage_file_created_by_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "user"("id");
-ALTER TABLE "announcement" ADD COLUMN "banner_url" VARCHAR(255) NOT NULL DEFAULT '';
-ALTER TABLE "finance_transaction" ADD COLUMN "receipt_url" VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE "announcement" ADD COLUMN IF NOT EXISTS "banner_url" VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE "finance_transaction" ADD COLUMN IF NOT EXISTS "receipt_url" VARCHAR(255) NOT NULL DEFAULT '';
 
 -- +migrate Down
 DROP TABLE IF EXISTS "storage_file";
