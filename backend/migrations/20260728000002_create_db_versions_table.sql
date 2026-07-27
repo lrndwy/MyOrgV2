@@ -1,3 +1,4 @@
+-- +migrate Up
 -- Buat tabel gokil_db_versions jika belum ada
 CREATE TABLE IF NOT EXISTS gokil_db_versions (
     id BIGSERIAL PRIMARY KEY,
