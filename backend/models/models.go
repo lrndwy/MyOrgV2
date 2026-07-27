@@ -325,3 +325,9 @@ type ActivityLog struct {
 	Description  string `orm:"text" json:"description"`
 	IPAddress    string `orm:"size:45" json:"ip_address"`
 }
+
+type DBVersion struct {
+	orm.BaseModel
+	Version   int64      `orm:"unique" json:"version"`
+	AppliedAt *time.Time `json:"applied_at"`
+}
