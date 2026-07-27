@@ -38,7 +38,7 @@ export function FilePreview({ url, fileName, className }: FilePreviewProps) {
       <iframe
         title={fileName}
         src={url}
-        className={cn("h-[80vh] w-full rounded-md border", className)}
+        className={cn("min-h-[80vh] h-full w-full rounded-md border", className)}
       />
     )
   }
