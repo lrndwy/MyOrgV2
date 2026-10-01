@@ -27,7 +27,7 @@ import {
   type IncomingPreviewKind,
 } from "@/components/incoming-letter-preview"
 import { useApi } from "@/hooks/use-api"
-import { apiRequest, getApiBase } from "@/lib/api"
+import { API_PROXY_BASE, apiRequest, getApiBase } from "@/lib/api"
 import { getStoredToken } from "@/lib/auth"
 import { formatDate, unwrapList } from "@/lib/format"
 import { storageUrl } from "@/lib/storage-url"
@@ -476,7 +476,7 @@ export function LettersTablePage({ letterType }: LettersTablePageProps) {
                 size="sm"
                 render={
                   <a
-                    href={`${getApiBase()}/letters/${letter.id}/download`}
+                    href={`${API_PROXY_BASE}/letters/${letter.id}/download`}
                     target="_blank"
                     rel="noreferrer"
                   />

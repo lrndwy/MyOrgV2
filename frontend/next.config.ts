@@ -5,6 +5,18 @@ const backendOrigin =
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Rewrite /api/backend/* diproksi lewat server Next. Default timeout proxy
+  // undici = 30 detik, jadi upload backup besar (restore ZIP, lampiran) mati
+  // dengan "Internal Server Error" sebelum backend selesai membaca body.
+  experimental: {
+    // Rewrite /api/backend/* diproksi lewat server Next. Dua batas default yang
+    // bikin restore backup gagal sejak ukuran sedang:
+    //  - proxyClientMaxBodySize 10MB: body dipotong 10MB, sisa request menggantung
+    //    sampai timeout → browser dapat teks "Internal Server Error".
+    //  - proxyTimeout 30 detik.
+    proxyClientMaxBodySize: 512 * 1024 * 1024,
+    proxyTimeout: 10 * 60 * 1000,
+  },
   // Jangan bocorkan stack via header X-Powered-By (fingerprint Wappalyzer dkk).
   poweredByHeader: false,
   async headers() {

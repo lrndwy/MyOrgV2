@@ -3,6 +3,13 @@ import { getStoredToken } from "@/lib/auth"
 import { normalizeApiData } from "@/lib/format"
 
 /**
+ * Path proxy same-origin. Pakai ini untuk URL yang dirender ke markup (href di
+ * Server Component/SSR): nilainya identik di server dan browser, sedangkan
+ * `getApiBase()` sengaja berbeda (server memanggil backend langsung).
+ */
+export const API_PROXY_BASE = "/api/backend"
+
+/**
  * Browser: same-origin proxy `/api/backend` so Set-Cookie lands on the Next host
  * (middleware can read `token`). Server: call backend directly.
  */
@@ -25,7 +32,7 @@ function resolveApiBase() {
     return pub
   }
   if (pub && pub.startsWith("/")) return pub
-  return "/api/backend"
+  return API_PROXY_BASE
 }
 
 const API_BASE = resolveApiBase()
