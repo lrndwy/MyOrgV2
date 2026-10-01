@@ -247,7 +247,7 @@ Frontend harus memanggil path underscore.
 | `POST /letters/parse-incoming` | `letters.manage` | Preview parse |
 | `GET /letter_templates/:id/variables` | `letters.manage` | Placeholder `.docx` + metadata format nomor |
 | `POST /letter_categories/:id/preview-number` | `letters.view` | Preview nomor surat dengan segmen dinamis |
-| `GET /backup`, `POST /backup` | `backup.manage` | Export ZIP / restore replace (lihat §6.10) |
+| `GET /backup`, `POST /backup` | `backup.manage` | Export ZIP / restore `mode=replace\|merge` (lihat §6.10) |
 | `GET/POST/DELETE /push/subscribe` | Auth | Web Push |
 
 ## 5. Model Role & Permission (Custom RBAC)
@@ -346,11 +346,18 @@ Parse CSV/XLSX → validasi → bulk insert → email async.
 
 ### 6.10 Backup & Restore
 - `GET /backup` mengekspor seluruh tabel terdaftar (`backupTables` di `services/backup.go`) ke `data.json` plus file storage (overwrite-by-key).
-- `POST /backup` adalah **replace penuh**, bukan merge-by-ID: `TRUNCATE … CASCADE` semua tabel di `backupTables` (bukan `db_versions`), lalu `INSERT` isi ZIP, lalu `setval` sequence.
-- Unique sekunder (`permission.code`, `role.name`, `user.username`/`email`, dll.) tidak di-merge. Merge-by-ID menabrak unique bila seed target punya ID berbeda untuk code yang sama.
-- Restore melewati baris `activity_log` yang `user_id`-nya tidak ada di payload `users` (user sudah dihapus / orphan FK). Tanpa ini INSERT kena `activity_log_user_id_fkey` (SQLSTATE 23503). `activity_log.user_id` nullable + `ON DELETE SET NULL` agar hapus user tidak meninggalkan orphan.
-- Setelah restore: `SyncMissingPermissions` + `SyncMissingSeedData` (permission/kategori baru yang belum ada di ZIP lama).
-- Storage objek **tidak** dihapus massal — hanya di-upload ulang per key. UI mengarahkan login ulang karena JWT masih memegang user ID lama.
+- `POST /backup` menerima field form `mode`:
+  - `replace` (**default**): `TRUNCATE … CASCADE` semua tabel di `backupTables` (bukan `db_versions`), lalu `INSERT` isi ZIP, lalu `setval` sequence. UI wajib konfirmasi ketik `REPLACE` dan logout (JWT masih memegang user ID lama).
+  - `merge`: tanpa truncate. Tiap baris ZIP dicocokkan ke baris lokal — **id dulu**, lalu fallback natural key unik (`naturalKeys` di `services/backup.go`: `role.name`, `permission.code`, `user.username`/`email`, `(role_id, permission_id)`, `(event_id, user_id)`, `recruitment.slug`, `push_subscription.endpoint`). Cocok → `UPDATE`; tidak ada → `INSERT`. Baris lokal yang tidak ada di ZIP dibiarkan.
+- Isi baris pada mode merge: bila `updated_at` ZIP lebih baru → semua kolom ZIP menimpa lokal; selain itu hanya kolom NULL/kosong di lokal yang diisi.
+- Setiap baris merge dibungkus `SAVEPOINT`, jadi baris yang gagal (FK/unique) dilewati dan dicatat di `skipped` — satu baris bermasalah tidak membatalkan seluruh restore. `RestoreJSONMerge` mengembalikan `(written, skipped)` per key.
+- Replace melewati baris `activity_log` yang `user_id`-nya tidak ada di payload `users` (user sudah dihapus / orphan FK). Merge memakai `skipActivityLogMerge`: cek keberadaan user di DB, karena tabel `user` tidak dikosongkan sehingga user lokal yang tidak ikut ZIP tetap valid.
+- Setelah restore (kedua mode): `SyncMissingPermissions` + `SyncMissingSeedData` (permission/kategori baru yang belum ada di ZIP lama).
+- Storage objek **tidak** dihapus massal — hanya di-upload ulang per key.
+- Browser memanggil `POST /backup` lewat rewrite Next `/api/backend/*`. Rewrite di-proksi server Next dengan dua batas default yang mematikan restore ZIP besar — keduanya diatur di `next.config.ts`:
+  - `experimental.proxyClientMaxBodySize` (default **10MB**): body dipotong di 10MB lalu stream ditutup, sisa request menggantung sampai timeout; browser menerima body teks `Internal Server Error` (bukan envelope JSON) → `res.json()` di frontend gagal. Dipasang 512MB.
+  - `experimental.proxyTimeout` (default **30 detik**). Dipasang 10 menit.
+- URL yang dirender ke markup (atribut `href`) MUST memakai `API_PROXY_BASE` dari `lib/api.ts`, bukan `getApiBase()`: `getApiBase()` sengaja beda antara server (URL backend langsung) dan browser (proxy same-origin) sehingga memicu hydration mismatch.
 
 ## 7. Seed Data
 

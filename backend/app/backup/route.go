@@ -158,6 +158,9 @@ func importBackup(ctx *views.Context) error {
 	if err := ctx.ParseMultipart(200 << 20); err != nil {
 		return ctx.Error(400, err.Error())
 	}
+	// Mode dibaca setelah ParseMultipart agar field form multipart terbaca:
+	// "merge" menimpa tanpa mengosongkan tabel, default "replace".
+	mode := services.ParseRestoreMode(ctx.Request.FormValue("mode"))
 	file, _, err := ctx.FormFile("file")
 	if err != nil {
 		return ctx.Error(400, "file required")
@@ -217,12 +220,17 @@ func importBackup(ctx *views.Context) error {
 	}
 
 	dbStats := map[string]int{}
+	skipped := map[string]int{}
 	if len(dataJSON) > 0 {
 		var payload map[string]json.RawMessage
 		if err := json.Unmarshal(dataJSON, &payload); err != nil {
 			return ctx.Error(400, "data.json tidak valid: "+err.Error())
 		}
-		dbStats, err = services.BackupService{}.RestoreJSON(reqCtx, payload)
+		if mode == services.RestoreMerge {
+			dbStats, skipped, err = services.BackupService{}.RestoreJSONMerge(reqCtx, payload)
+		} else {
+			dbStats, err = services.BackupService{}.RestoreJSON(reqCtx, payload)
+		}
 		if err != nil {
 			return ctx.Error(500, err.Error())
 		}
@@ -235,12 +243,18 @@ func importBackup(ctx *views.Context) error {
 	}
 
 	if _, err := orm.GetByID[models.User](reqCtx, user.ID); err == nil {
+		action := "Memulihkan backup sistem"
+		if mode == services.RestoreMerge {
+			action = "Menggabungkan backup sistem (mode merge)"
+		}
 		services.LogActivity(reqCtx, user.ID, "restore", "backup", 0,
-			"Memulihkan backup sistem", ctx.Request.RemoteAddr)
+			action, ctx.Request.RemoteAddr)
 	}
 	return ctx.Success(200, "backup restored", map[string]any{
+		"mode":           string(mode),
 		"files_restored": filesRestored,
 		"files_failed":   filesFailed,
 		"database":       dbStats,
+		"skipped":        skipped,
 	})
 }

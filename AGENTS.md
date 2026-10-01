@@ -82,6 +82,7 @@ Modul domain backend: **model → service → route handler**. Handler hanya bin
 - Route groups: `(auth)`, `(member)`, `(admin)` — lihat PRD §6.
 - Validasi form selaras schema backend (zod / shared types bila ada).
 - API client terpusat di `lib/` — jangan duplikasi fetch di setiap page.
+- URL yang dirender ke markup (`href`, dsb.) pakai `API_PROXY_BASE` (`/api/backend`), **bukan** `getApiBase()` — `getApiBase()` beda antara server dan browser (hydration mismatch).
 - Auth: andalkan cookie httpOnly `token` dari backend; Server Components boleh proxy request dengan cookie.
 
 ### Permission & Role
