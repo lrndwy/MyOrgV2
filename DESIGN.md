@@ -10,9 +10,16 @@ Panduan kerja AI agent: [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md).
 |---|---|---|
 | API | Go 1.26 + **[gokil](https://github.com/lrndwy/gokil)** (`github.com/lrndwy/gokil`) | [`backend/`](backend/) |
 | UI | Next.js 16 + React 19 + Tailwind v4 + **shadcn/ui** style `base-mira` (`@base-ui/react`) | [`frontend/`](frontend/) |
-| DB | PostgreSQL 16 | Docker Compose `backend/docker-compose.yml` |
-| Cache / session support | Redis 7 | sama |
-| Object storage | MinIO (S3-compatible) | ditambahkan ke docker compose; provider gokil `s3` |
+| DB | PostgreSQL 16 | stack terpisah [`docker-compose.db.yml`](docker-compose.db.yml) (production) / [`backend/docker-compose.yml`](backend/docker-compose.yml) (lokal) |
+| Cache / session support | Redis 7 (opsional) | `backend/docker-compose.yml`; **tidak dipakai** di stack production — gokil v0.9.1 tidak mengakses Redis saat runtime (hanya di-scaffold) |
+| Object storage | S3-compatible (MinIO / RustFS) | eksternal via `GOKIL_STORAGE_*`; tidak ada container storage |
+
+**Topologi production** — [`docker-compose.prod-service.yml`](docker-compose.prod-service.yml) hanya berisi aplikasi (frontend, gokil, OCR); PostgreSQL jalan di stack terpisah (`docker-compose.db.yml`) dan object storage eksternal (S3-compatible). Port dipublikasikan ke loopback host saja (`127.0.0.1:3000/8080/5432`) untuk diteruskan reverse proxy. Stack DB **harus start lebih dulu** karena ia yang membuat network `myorg-internal` yang dipakai bersama:
+
+```bash
+docker compose -f docker-compose.db.yml up -d
+docker compose -f docker-compose.prod-service.yml up -d --build
+```
 
 **Framework backend:** gokil adalah framework buatan sendiri (file-based routing ala Next.js + pola Django-like: settings, models, migrations, cron). Repo: <https://github.com/lrndwy/gokil.git>. Versi awal proyek: `v0.8.1`; setelah patch Fase 0 → bump ke `v0.9.0+` (lihat §0.1 dan §13).
 
@@ -357,7 +364,7 @@ Parse CSV/XLSX → validasi → bulk insert → email async.
 - Browser memanggil `POST /backup` lewat rewrite Next `/api/backend/*`. Rewrite di-proksi server Next dengan dua batas default yang mematikan restore ZIP besar — keduanya diatur di `next.config.ts`:
   - `experimental.proxyClientMaxBodySize` (default **10MB**): body dipotong di 10MB lalu stream ditutup, sisa request menggantung sampai timeout; browser menerima body teks `Internal Server Error` (bukan envelope JSON) → `res.json()` di frontend gagal. Dipasang 512MB.
   - `experimental.proxyTimeout` (default **30 detik**). Dipasang 10 menit.
-- URL yang dirender ke markup (atribut `href`) MUST memakai `API_PROXY_BASE` dari `lib/api.ts`, bukan `getApiBase()`: `getApiBase()` sengaja beda antara server (URL backend langsung) dan browser (proxy same-origin) sehingga memicu hydration mismatch.
+- URL backend yang dirender ke markup (atribut `href`) MUST memakai `renderApiBase()` dari `lib/api.ts`, bukan `getApiBase()` mentah: `getApiBase()` sengaja beda antara server (URL backend langsung) dan browser (proxy same-origin) sehingga memicu hydration mismatch. `renderApiBase()` mengembalikan `/api/backend` di mode default, dan URL backend langsung di direct-API mode (`USE_DIRECT_API=1`) tempat proxy Next tidak dipakai/dijangkau (lihat link download backup & surat).
 
 ## 7. Seed Data
 
@@ -408,7 +415,16 @@ backups/{date}-{id}.zip
   - `DELETE /storage/files/:id` juga menghapus objek fisik di provider (best-effort).
   - Tampilan default browser storage hanya menampilkan isi root; isi folder dimuat saat folder dibuka.
 - Web anggota: tidak ada halaman storage terpisah.
-- Wiring: `storage.New(settings.Storage)` sekali di bootstrap; jangan `NewS3` per request.
+- Wiring: `storageutil.Init(settings.Storage)` sekali di bootstrap; jangan buat client per request. Provider `local` tetap dari gokil, provider `s3` dari `internal/storageutil/s3.go` (§9.1).
+
+### 9.1 S3 non-AWS di balik reverse proxy (Cloudflare)
+
+`storage.NewS3` bawaan gokil tidak dipakai untuk provider `s3`. SDK AWS menandatangani header `Accept-Encoding` (di-set middleware `DisableGzip` bawaan SDK menjadi `identity`); Cloudflare menulis ulang header itu di transit, sehingga SigV4 yang dihitung server tidak cocok dan **semua** upload gagal `403 SignatureDoesNotMatch`. `internal/storageutil/s3.go` membuang `Accept-Encoding` sebelum signing dan memasangnya kembali setelah request ditandatangani (dijaga test `s3_test.go`).
+
+Konsekuensi konfigurasi endpoint non-AWS:
+
+- Endpoint non-AWS selalu path-style, jadi `GOKIL_STORAGE_BASE_URL` **wajib** memuat bucket (`https://s3.example.com/myorg`). Tanpa segmen bucket, URL hasil upload salah dan file 403 saat dibuka.
+- URL disimpan mentah di DB dan dirender langsung oleh browser (`<img>`, `<a>`), sementara `storageutil.ReadURL` mengambilnya dengan GET **tanpa** tanda tangan. Bucket karena itu harus **anonymous read** (bucket policy `s3:GetObject` untuk `*`); kalau privat, upload sukses tapi semua gambar & unduhan 403.
 
 ## 10. Keamanan & Observability
 

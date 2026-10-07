@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { API_PROXY_BASE, getApiBase } from "@/lib/api"
+import { getApiBase, renderApiBase } from "@/lib/api"
 import { getStoredToken, setStoredToken } from "@/lib/auth"
 
 type RestoreMode = "replace" | "merge"
@@ -123,7 +123,7 @@ export default function AdminBackupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button render={<a href={`${API_PROXY_BASE}/backup`} download />}>
+            <Button render={<a href={`${renderApiBase()}/backup`} download />}>
               Download Backup ZIP
             </Button>
           </CardContent>

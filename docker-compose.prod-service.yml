@@ -1,0 +1,100 @@
+# =============================================================================
+# MyOrg Production Stack — aplikasi saja (frontend, backend, OCR)
+# =============================================================================
+# Database PostgreSQL & object storage TIDAK di sini:
+#   - PostgreSQL : docker-compose.db.yml (stack terpisah, harus jalan lebih dulu)
+#   - S3/MinIO   : eksternal (lihat GOKIL_STORAGE_* di .env)
+#
+# Usage:
+#   docker compose -f docker-compose.db.yml up -d            # DB dulu (buat network)
+#   docker compose -f docker-compose.prod-service.yml up -d --build
+#
+# Semua service berbagi network myorg-internal (dibuat stack DB). Port
+# dipublikasikan hanya ke loopback host supaya bisa dilalui reverse proxy
+# (nginx/caddy) tanpa terbuka ke internet.
+# =============================================================================
+
+services:
+
+  # ── Frontend (Next.js) ────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_USE_DIRECT_API: ${NEXT_PUBLIC_USE_DIRECT_API}
+        API_INTERNAL_URL: ${API_INTERNAL_URL}
+    env_file:
+      - .env
+    environment:
+      API_INTERNAL_URL: ${API_INTERNAL_URL}
+    ports:
+      # Loopback saja: akses lewat reverse proxy di host. Ganti ke "3000:3000"
+      # kalau memang mau dibuka langsung.
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - gokil
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── Backend (Go + gokil) ──────────────────────────────────────────────────
+  gokil:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        PROJECT: backend
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      ocr:
+        condition: service_healthy
+    environment:
+      OCR_SERVICE_URL: http://ocr:8090
+    volumes:
+      # Tanpa volume ini, semua file upload (avatar, banner, lampiran, dsb.)
+      # hilang setiap kali container di-rebuild/redeploy.
+      - gokil_storage:/app/storage
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  # Dijalankan terpisah: docker-compose.db.yml
+  #
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  # Tidak dipakai (GOKIL_REDIS_ENABLED=false). gokil v0.9.1 tidak memakai Redis
+  # saat runtime — hanya di-scaffold, tidak ada kode yang mengaksesnya.
+  #
+  # ── MinIO (S3-compatible object storage) ───────────────────────────────────
+  # Tidak dipakai: storage memakai S3 eksternal (GOKIL_STORAGE_PROVIDER=s3).
+
+  # ── OCR Service (PDF/image text extraction) ────────────────────────────────
+  ocr:
+    build:
+      context: ./backend/ocr
+    restart: unless-stopped
+    environment:
+      OCR_LANG: ${OCR_LANG:-ind+eng}
+      OCR_PDF_DPI: ${OCR_PDF_DPI:-200}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - internal
+
+volumes:
+  gokil_storage:
+
+networks:
+  internal:
+    # Dibuat oleh stack DB (docker-compose.db.yml) dan dipakai bersama.
+    name: myorg-internal
+    external: true

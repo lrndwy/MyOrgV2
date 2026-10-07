@@ -24,6 +24,10 @@ var (
 
 func Init(settings config.StorageSettings) error {
 	once.Do(func() {
+		if strings.EqualFold(strings.TrimSpace(settings.Provider), "s3") {
+			provider, initErr = newS3(settings)
+			return
+		}
 		provider, initErr = storage.New(settings)
 	})
 	return initErr

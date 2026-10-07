@@ -144,3 +144,19 @@ export async function apiRequest<T = unknown>(
 export function getApiBase() {
   return API_BASE
 }
+
+/**
+ * Base untuk URL backend yang dirender ke markup (href/src). Same-origin proxy
+ * `/api/backend` di mode default; di direct-API mode (USE_DIRECT_API=1) browser
+ * harus memanggil backend langsung karena proxy Next tidak dipakai. Pola sama
+ * dengan `storageUrl()`.
+ */
+export function renderApiBase(): string {
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_USE_DIRECT_API === "1"
+  ) {
+    return getApiBase()
+  }
+  return API_PROXY_BASE
+}

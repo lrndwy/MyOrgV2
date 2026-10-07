@@ -1,0 +1,49 @@
+name: myorg-db
+
+# =============================================================================
+# MyOrg — PostgreSQL (stack terpisah dari aplikasi)
+# =============================================================================
+# Dijalankan sendiri supaya app stack (docker-compose.prod-service.yml) bisa
+# di-rebuild/redeploy tanpa menyentuh database.
+#
+# Usage (dari root repo):
+#   docker compose -f docker-compose.db.yml up -d      # WAJIB jalan lebih dulu:
+#                                                      # stack ini membuat network
+#                                                      # myorg-internal
+#   docker compose -f docker-compose.db.yml logs -f
+#   docker compose -f docker-compose.db.yml down       # container & network saja
+#
+# Nilai POSTGRES_* dibaca dari .env root (GOKIL_DB_*) supaya kredensial DB hanya
+# punya satu sumber: DSN di .env dan user di container selalu sama.
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: myorg-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${GOKIL_DB_USER}
+      POSTGRES_PASSWORD: ${GOKIL_DB_PASSWORD}
+      POSTGRES_DB: ${GOKIL_DB_NAME}
+    ports:
+      # Loopback saja, untuk psql/admin dari host. Container app konek lewat
+      # network myorg-internal (host: db), bukan lewat port ini.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - myorg_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GOKIL_DB_USER} -d ${GOKIL_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+volumes:
+  myorg_db_data:
+
+networks:
+  internal:
+    name: myorg-internal
+    driver: bridge
