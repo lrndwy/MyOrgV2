@@ -96,5 +96,4 @@ volumes:
 networks:
   internal:
     # Dibuat oleh stack DB (docker-compose.db.yml) dan dipakai bersama.
-    name: myorg-internal
     external: true
