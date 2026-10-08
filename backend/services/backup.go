@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"backend/internal/storageutil"
 	"backend/internal/timeutil"
 
 	"github.com/lrndwy/gokil/orm"
@@ -117,11 +118,20 @@ func (BackupService) ExportJSON(ctx context.Context) (map[string]any, error) {
 	return payload, nil
 }
 
-// CollectFileRefs memindai payload export dan mengembalikan pasangan
-// key storage → URL untuk setiap kolom URL file (avatar, banner, selfie,
-// lampiran, dsb.), apa pun provider storage-nya (lokal maupun S3/MinIO).
-func (BackupService) CollectFileRefs(payload map[string]any) map[string]string {
-	refs := map[string]string{}
+// FileRef merujuk satu file storage yang dirujuk kolom URL di database.
+// Keys = kandidat key, paling mungkin lebih dulu (URL bisa berasal dari era
+// dengan nama bucket atau base URL yang berbeda).
+type FileRef struct {
+	URL  string
+	Keys []string
+}
+
+// CollectFileRefs memindai payload export dan mengembalikan setiap kolom URL
+// file (avatar, banner, selfie, lampiran, dsb.), apa pun provider storage-nya
+// (lokal maupun S3/MinIO). Terurut supaya hasil backup deterministik.
+func CollectFileRefs(payload map[string]any) []FileRef {
+	seen := map[string]bool{}
+	refs := []FileRef{}
 	for _, tableData := range payload {
 		rows, ok := tableData.([]map[string]any)
 		if !ok {
@@ -133,40 +143,89 @@ func (BackupService) CollectFileRefs(payload map[string]any) map[string]string {
 					continue
 				}
 				s, ok := val.(string)
-				if !ok || s == "" || strings.HasPrefix(s, "data:") {
+				if !ok || s == "" || strings.HasPrefix(s, "data:") || seen[s] {
 					continue
 				}
-				if key := StorageKeyFromURL(s); key != "" {
-					refs[key] = s
+				keys := StorageKeyCandidates(s)
+				if len(keys) == 0 {
+					continue
 				}
+				seen[s] = true
+				refs = append(refs, FileRef{URL: s, Keys: keys})
 			}
 		}
 	}
+	sort.Slice(refs, func(i, j int) bool { return refs[i].URL < refs[j].URL })
 	return refs
 }
 
-// StorageKeyFromURL menurunkan key storage dari URL yang tersimpan di DB.
-// Format URL: "<base_url>/<key>" (local/S3 dengan base URL), "/storage/<key>"
-// (local tanpa base URL), atau "https://<bucket>.s3.amazonaws.com/<key>".
-func StorageKeyFromURL(url string) string {
+// StorageKeyCandidates menurunkan kandidat key storage dari URL yang tersimpan
+// di DB, paling mungkin lebih dulu.
+//
+// Format yang ditangani:
+//
+//	"<base_url>/<key>"          -> key (base URL provider aktif)
+//	"/storage/<key>"            -> key (provider local tanpa base URL)
+//	"<host>/<bucket>/<key>"     -> key (endpoint path-style: bucket = segmen
+//	                               pertama path, apa pun namanya — nama bucket
+//	                               bisa berubah antar era, mis. myorg -> himatris)
+//	"https://<bucket>.s3.<...>/<key>" -> key (virtual-host AWS, tanpa segmen bucket)
+//
+// Kandidat kedua (path tanpa segmen pertama) disertakan supaya pemanggil bisa
+// memverifikasi keberadaan file alih-alih menebak.
+func StorageKeyCandidates(url string) []string {
+	if strings.HasPrefix(url, "/storage/") {
+		if key := sanitizeStorageKey(strings.TrimPrefix(url, "/storage/")); key != "" {
+			return []string{key}
+		}
+		return nil
+	}
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return nil
+	}
+
+	rest := url[strings.Index(url, "://")+3:]
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		return nil
+	}
+	host := rest[:slash]
+	path := sanitizeStorageKey(rest[slash+1:])
+	if path == "" {
+		return nil
+	}
+
+	// Base URL provider aktif: kandidat paling akurat.
 	if base := strings.TrimSuffix(os.Getenv("GOKIL_STORAGE_BASE_URL"), "/"); base != "" {
 		if strings.HasPrefix(url, base+"/") {
-			return sanitizeStorageKey(strings.TrimPrefix(url, base+"/"))
+			return []string{sanitizeStorageKey(strings.TrimPrefix(url, base+"/"))}
 		}
 	}
-	if strings.HasPrefix(url, "/storage/") {
-		return sanitizeStorageKey(strings.TrimPrefix(url, "/storage/"))
+
+	// Virtual-host AWS: path sudah berupa key, tidak ada segmen bucket.
+	if strings.Contains(host, ".s3.") || strings.HasSuffix(host, ".s3.amazonaws.com") {
+		return []string{path}
 	}
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		rest := url[strings.Index(url, "://")+3:]
-		if slash := strings.Index(rest, "/"); slash >= 0 {
-			path := rest[slash+1:]
-			// Buang segmen bucket bila URL berbentuk <host>/<bucket>/<key>.
-			if bucket := os.Getenv("GOKIL_STORAGE_BUCKET"); bucket != "" {
-				path = strings.TrimPrefix(path, bucket+"/")
+
+	// Path-style: segmen pertama adalah bucket.
+	out := []string{path}
+	if i := strings.Index(path, "/"); i >= 0 {
+		if trimmed := sanitizeStorageKey(path[i+1:]); trimmed != "" {
+			// Bucket aktif lebih dipercaya kalau namanya cocok.
+			if bucket := os.Getenv("GOKIL_STORAGE_BUCKET"); bucket != "" && strings.HasPrefix(path, bucket+"/") {
+				return []string{trimmed, path}
 			}
-			return sanitizeStorageKey(path)
+			out = []string{trimmed, path}
 		}
+	}
+	return out
+}
+
+// StorageKeyFromURL mengembalikan kandidat key pertama (untuk pemanggil yang
+// hanya butuh satu tebakan terbaik, mis. hapus objek best-effort).
+func StorageKeyFromURL(url string) string {
+	if keys := StorageKeyCandidates(url); len(keys) > 0 {
+		return keys[0]
 	}
 	return ""
 }
@@ -180,6 +239,132 @@ func sanitizeStorageKey(key string) string {
 		key = key[:i]
 	}
 	return key
+}
+
+// RewriteStorageURLs menormalkan kolom URL file di payload backup ke URL
+// provider storage yang sedang dipakai. Tanpa ini, restore dari ZIP yang
+// diekspor deployment/era storage lain menyisakan URL mati di database:
+// backup berisi URL absolut base lama (atau "/storage/<key>" era provider
+// local) padahal file-nya sudah di-upload ke provider aktif.
+//
+// knownKeys = himpunan key ("avatars/2026/10/x.png") yang benar-benar ada di
+// dalam ZIP. Itu bukti eksak bahwa URL dengan key tersebut milik sistem ini,
+// sekaligus yang menjaga URL asing (tautan luar) tidak ikut ditulis ulang.
+// URL "/storage/<key>" selalu ditulis ulang karena bentuk itu hanya mungkin
+// berasal dari provider local.
+//
+// Tradeoff yang disengaja: URL absolut yang key-nya ada di ZIP diperlakukan
+// sebagai milik sistem ini, jadi mirror/CDN yang menyalin path storage kita
+// ikut dialihkan ke provider aktif. Kerugiannya kecil (file-nya memang ada di
+// storage kita, jadi tetap tampil) dan jauh lebih ringan daripada URL base lama
+// yang dibiarkan mati. Tanpa ZIP (knownKeys kosong) hanya URL "/storage/..."
+// yang ditulis ulang.
+func RewriteStorageURLs(payload map[string]json.RawMessage, knownKeys map[string]struct{}) (int, error) {
+	return rewriteStorageURLs(payload, knownKeys, storageURLFor)
+}
+
+// storageURLFor membangun URL seperti hasil upload baru (provider aktif).
+func storageURLFor(key string) (string, error) {
+	provider := storageutil.Provider()
+	if provider == nil {
+		return "", fmt.Errorf("storage not initialized")
+	}
+	return provider.URL(key)
+}
+
+func rewriteStorageURLs(
+	payload map[string]json.RawMessage,
+	knownKeys map[string]struct{},
+	urlFor func(string) (string, error),
+) (int, error) {
+	if len(payload) == 0 || urlFor == nil {
+		return 0, nil
+	}
+	changed := 0
+	for key, raw := range payload {
+		if len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		var items []map[string]any
+		if err := json.Unmarshal(raw, &items); err != nil {
+			return changed, fmt.Errorf("%s: %w", key, err)
+		}
+		rowChanged := false
+		for _, row := range items {
+			for col, val := range row {
+				if col != "url" && !strings.HasSuffix(col, "_url") {
+					continue
+				}
+				s, ok := val.(string)
+				if !ok || s == "" || strings.HasPrefix(s, "data:") {
+					continue
+				}
+				storageKey, ok := matchKnownStorageKey(s, knownKeys)
+				if !ok {
+					continue
+				}
+				next, err := urlFor(storageKey)
+				if err != nil || next == "" || next == s {
+					continue
+				}
+				row[col] = next
+				changed++
+				rowChanged = true
+			}
+		}
+		if rowChanged {
+			raw, err := json.Marshal(items)
+			if err != nil {
+				return changed, fmt.Errorf("%s: %w", key, err)
+			}
+			payload[key] = raw
+		}
+	}
+	return changed, nil
+}
+
+// matchKnownStorageKey mengembalikan key storage dari URL yang tersimpan di DB
+// bila key itu memang ada di ZIP (atau URL-nya relatif era provider local).
+//
+// Path absolut dicoba apa adanya lalu tanpa segmen pertama, karena nama bucket
+// ikut masuk ke path pada endpoint path-style dan nama itu bisa berbeda antar
+// era (mis. "myorg" -> "himatris").
+func matchKnownStorageKey(url string, knownKeys map[string]struct{}) (string, bool) {
+	if strings.HasPrefix(url, "/storage/") {
+		if key := sanitizeStorageKey(strings.TrimPrefix(url, "/storage/")); key != "" {
+			return key, true
+		}
+		return "", false
+	}
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return "", false
+	}
+	rest := url[strings.Index(url, "://")+3:]
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		return "", false
+	}
+	path := rest[slash+1:]
+	for _, candidate := range keyCandidates(path) {
+		if _, ok := knownKeys[candidate]; ok {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func keyCandidates(path string) []string {
+	path = sanitizeStorageKey(path)
+	if path == "" {
+		return nil
+	}
+	out := []string{path}
+	if i := strings.Index(path, "/"); i >= 0 {
+		if trimmed := sanitizeStorageKey(path[i+1:]); trimmed != "" && trimmed != path {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 // RestoreJSON mengganti seluruh isi tabel backup dengan data ZIP (TRUNCATE

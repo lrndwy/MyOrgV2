@@ -71,29 +71,45 @@ func exportBackup(ctx *views.Context) error {
 	storageRoot := storageRootPath()
 
 	// 1) Semua file yang dirujuk kolom URL di database — bekerja untuk
-	//    provider lokal maupun S3/MinIO (dibaca lewat URL-nya).
-	for key, url := range (services.BackupService{}).CollectFileRefs(payload) {
-		name := "storage/" + key
-		if written[name] {
-			continue
+	//    provider lokal maupun S3/MinIO (dibaca lewat URL-nya). URL bisa berasal
+	//    dari era storage lain (bucket/base URL berbeda), jadi tiap kandidat key
+	//    dicoba dan yang benar-benar ada yang dipakai — bukan menebak.
+	for _, ref := range services.CollectFileRefs(payload) {
+		var content []byte
+		var key string
+
+		// Baca lewat URL-nya dulu (butuh provider bisa dijangkau).
+		if data, err := storageutil.ReadURL(reqCtx, ref.URL); err == nil {
+			content, key = data, ref.Keys[0]
 		}
-		data, err := storageutil.ReadURL(reqCtx, url)
-		if err != nil {
-			// Fallback: coba baca langsung dari disk lokal (mis. base URL
-			// menunjuk host publik yang tidak bisa diakses dari server).
-			data, err = os.ReadFile(filepath.Join(storageRoot, filepath.FromSlash(key)))
+		// Fallback: cari langsung di disk untuk tiap kandidat key. Ini yang
+		// menyelamatkan URL absolut mati (base lama) yang filenya masih ada
+		// di volume, dan file era provider local.
+		if content == nil {
+			for _, candidate := range ref.Keys {
+				data, err := os.ReadFile(filepath.Join(storageRoot, filepath.FromSlash(candidate)))
+				if err == nil {
+					content, key = data, candidate
+					break
+				}
+			}
 		}
-		if err != nil {
+		if content == nil {
 			// File dirujuk database tapi tidak ditemukan di storage —
 			// catat di manifest agar terlihat, jangan gagalkan backup.
-			missing = append(missing, missingFile{Key: key, URL: url})
+			missing = append(missing, missingFile{Key: ref.Keys[0], URL: ref.URL})
+			continue
+		}
+
+		name := "storage/" + key
+		if written[name] {
 			continue
 		}
 		fw, err := zw.Create(name)
 		if err != nil {
 			continue
 		}
-		if _, err := fw.Write(data); err == nil {
+		if _, err := fw.Write(content); err == nil {
 			written[name] = true
 		}
 	}
@@ -177,6 +193,7 @@ func importBackup(ctx *views.Context) error {
 	reqCtx := ctx.Request.Context()
 	filesRestored := 0
 	filesFailed := 0
+	knownKeys := map[string]struct{}{}
 	var dataJSON []byte
 	for _, f := range zr.File {
 		if f.Name == "data.json" {
@@ -195,6 +212,7 @@ func importBackup(ctx *views.Context) error {
 		if key == "" || strings.Contains(key, "..") || strings.HasPrefix(key, "/") {
 			continue
 		}
+		knownKeys[key] = struct{}{}
 		rc, err := f.Open()
 		if err != nil {
 			filesFailed++
@@ -221,10 +239,19 @@ func importBackup(ctx *views.Context) error {
 
 	dbStats := map[string]int{}
 	skipped := map[string]int{}
+	urlsRewritten := 0
 	if len(dataJSON) > 0 {
 		var payload map[string]json.RawMessage
 		if err := json.Unmarshal(dataJSON, &payload); err != nil {
 			return ctx.Error(400, "data.json tidak valid: "+err.Error())
+		}
+		// URL di backup bisa menunjuk base storage deployment/era lain (atau
+		// "/storage/<key>" era provider local), padahal file-nya baru saja
+		// di-upload ke provider aktif. Samakan dulu, kalau tidak gambar &
+		// lampiran hasil restore menunjuk alamat mati.
+		urlsRewritten, err = services.RewriteStorageURLs(payload, knownKeys)
+		if err != nil {
+			return ctx.Error(400, "normalisasi URL storage: "+err.Error())
 		}
 		if mode == services.RestoreMerge {
 			dbStats, skipped, err = services.BackupService{}.RestoreJSONMerge(reqCtx, payload)
@@ -254,6 +281,7 @@ func importBackup(ctx *views.Context) error {
 		"mode":           string(mode),
 		"files_restored": filesRestored,
 		"files_failed":   filesFailed,
+		"urls_rewritten": urlsRewritten,
 		"database":       dbStats,
 		"skipped":        skipped,
 	})
