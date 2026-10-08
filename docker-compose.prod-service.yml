@@ -103,5 +103,4 @@ networks:
     # Dipakai bersama stack DB (docker-compose.db.yml) — nama eksplisit supaya
     # keduanya join network yang sama. Bukan external: kalau belum ada, stack
     # ini yang membuatnya (dan sebaliknya).
-    name: myorg-internal
     driver: bridge
