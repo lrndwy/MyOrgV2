@@ -7,11 +7,14 @@ name: myorg-db
 # di-rebuild/redeploy tanpa menyentuh database.
 #
 # Usage (dari root repo):
-#   docker compose -f docker-compose.db.yml up -d      # WAJIB jalan lebih dulu:
-#                                                      # stack ini membuat network
-#                                                      # myorg-internal
+#   docker compose -f docker-compose.db.yml up -d      # jalankan dulu supaya
+#                                                      # DB siap saat app start
 #   docker compose -f docker-compose.db.yml logs -f
 #   docker compose -f docker-compose.db.yml down       # container & network saja
+#
+# Network myorg-internal dideklarasikan di sini dan di
+# docker-compose.prod-service.yml — keduanya join network yang sama, dan stack
+# yang start lebih dulu yang membuatnya.
 #
 # Nilai POSTGRES_* dibaca dari .env root (GOKIL_DB_*) supaya kredensial DB hanya
 # punya satu sumber: DSN di .env dan user di container selalu sama.

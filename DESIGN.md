@@ -14,7 +14,7 @@ Panduan kerja AI agent: [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md).
 | Cache / session support | Redis 7 (opsional) | `backend/docker-compose.yml`; **tidak dipakai** di stack production — gokil v0.9.1 tidak mengakses Redis saat runtime (hanya di-scaffold) |
 | Object storage | S3-compatible (MinIO / RustFS) | eksternal via `GOKIL_STORAGE_*`; tidak ada container storage |
 
-**Topologi production** — [`docker-compose.prod-service.yml`](docker-compose.prod-service.yml) hanya berisi aplikasi (frontend, gokil, OCR); PostgreSQL jalan di stack terpisah (`docker-compose.db.yml`) dan object storage eksternal (S3-compatible). Port dipublikasikan ke loopback host saja (`127.0.0.1:3000/8080/5432`) untuk diteruskan reverse proxy. Stack DB **harus start lebih dulu** karena ia yang membuat network `myorg-internal` yang dipakai bersama:
+**Topologi production** — [`docker-compose.prod-service.yml`](docker-compose.prod-service.yml) hanya berisi aplikasi (frontend, gokil, OCR); PostgreSQL jalan di stack terpisah (`docker-compose.db.yml`) dan object storage eksternal (S3-compatible). Tidak ada port yang dipublikasikan ke host: service hanya diakses lewat network `myorg-internal` (`frontend:3000`, `gokil:8080`), sehingga reverse proxy (nginx/caddy) harus ikut join network tersebut. Network itu dideklarasikan di kedua stack (bukan `external`), jadi stack yang start lebih dulu yang membuatnya:
 
 ```bash
 docker compose -f docker-compose.db.yml up -d

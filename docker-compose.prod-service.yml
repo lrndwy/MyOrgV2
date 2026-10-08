@@ -2,16 +2,21 @@
 # MyOrg Production Stack — aplikasi saja (frontend, backend, OCR)
 # =============================================================================
 # Database PostgreSQL & object storage TIDAK di sini:
-#   - PostgreSQL : docker-compose.db.yml (stack terpisah, harus jalan lebih dulu)
+#   - PostgreSQL : docker-compose.db.yml (stack terpisah, jalankan lebih dulu)
 #   - S3/MinIO   : eksternal (lihat GOKIL_STORAGE_* di .env)
 #
 # Usage:
-#   docker compose -f docker-compose.db.yml up -d            # DB dulu (buat network)
+#   docker compose -f docker-compose.db.yml up -d            # DB dulu
 #   docker compose -f docker-compose.prod-service.yml up -d --build
 #
-# Semua service berbagi network myorg-internal (dibuat stack DB). Port
-# dipublikasikan hanya ke loopback host supaya bisa dilalui reverse proxy
-# (nginx/caddy) tanpa terbuka ke internet.
+# Semua service berbagi network myorg-internal. Network itu dideklarasikan di
+# sini DAN di docker-compose.db.yml (bukan external), jadi stack yang start
+# lebih dulu yang membuatnya dan stack lain ikut join.
+#
+# Tidak ada port yang dipublikasikan ke host. Service hanya bisa dijangkau dari
+# container lain di network yang sama, lewat nama service: frontend:3000,
+# gokil:8080, ocr:8090. Reverse proxy (nginx/caddy) harus ikut join network
+# myorg-internal — bukan mengarah ke 127.0.0.1.
 # =============================================================================
 
 services:
@@ -29,10 +34,8 @@ services:
       - .env
     environment:
       API_INTERNAL_URL: ${API_INTERNAL_URL}
-    ports:
-      # Loopback saja: akses lewat reverse proxy di host. Ganti ke "3000:3000"
-      # kalau memang mau dibuka langsung.
-      - "127.0.0.1:3000:3000"
+    expose:
+      - "3000"
     depends_on:
       - gokil
     restart: unless-stopped
@@ -48,8 +51,8 @@ services:
         PROJECT: backend
     env_file:
       - .env
-    ports:
-      - "127.0.0.1:8080:8080"
+    expose:
+      - "8080"
     depends_on:
       ocr:
         condition: service_healthy
@@ -78,6 +81,8 @@ services:
     build:
       context: ./backend/ocr
     restart: unless-stopped
+    expose:
+      - "8090"
     environment:
       OCR_LANG: ${OCR_LANG:-ind+eng}
       OCR_PDF_DPI: ${OCR_PDF_DPI:-200}
@@ -95,5 +100,8 @@ volumes:
 
 networks:
   internal:
-    # Dibuat oleh stack DB (docker-compose.db.yml) dan dipakai bersama.
-    external: true
+    # Dipakai bersama stack DB (docker-compose.db.yml) — nama eksplisit supaya
+    # keduanya join network yang sama. Bukan external: kalau belum ada, stack
+    # ini yang membuatnya (dan sebaliknya).
+    name: myorg-internal
+    driver: bridge
