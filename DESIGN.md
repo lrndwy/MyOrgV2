@@ -418,6 +418,7 @@ backups/{date}-{id}.zip
   - Tampilan default browser storage hanya menampilkan isi root; isi folder dimuat saat folder dibuka.
 - Web anggota: tidak ada halaman storage terpisah.
 - Wiring: `storageutil.Init(settings.Storage)` sekali di bootstrap; jangan buat client per request. Provider `local` tetap dari gokil, provider `s3` dari `internal/storageutil/s3.go` (§9.1).
+- **URL relatif `/storage/<key>` dari era provider `local`** tetap dilayani dari disk oleh handler statis di `cmd/backend/main.go` (`http.FileServer` atas `settings.Storage.LocalPath`, default `storage` = volume `/app/storage`), **tanpa** digerbangi provider — berkas era itu masih ada di volume, jadi URL lama tidak boleh mati setelah pindah ke s3. Upload baru provider s3 memakai URL absolut dan tidak lewat handler ini. Frontend meneruskan `/storage/*` ke backend lewat rewrite `next.config.ts`, jadi URL relatif tetap jalan di mode proxy maupun direct-API. `/storage/files` dan `/storage/folders` dikecualikan karena route API.
 
 ### 9.1 S3 non-AWS di balik reverse proxy (Cloudflare)
 
@@ -427,6 +428,11 @@ Konsekuensi konfigurasi endpoint non-AWS:
 
 - Endpoint non-AWS selalu path-style, jadi `GOKIL_STORAGE_BASE_URL` **wajib** memuat bucket (`https://s3.example.com/myorg`). Tanpa segmen bucket, URL hasil upload salah dan file 403 saat dibuka.
 - URL disimpan mentah di DB dan dirender langsung oleh browser (`<img>`, `<a>`), sementara `storageutil.ReadURL` mengambilnya dengan GET **tanpa** tanda tangan. Bucket karena itu harus **anonymous read** (bucket policy `s3:GetObject` untuk `*`); kalau privat, upload sukses tapi semua gambar & unduhan 403.
+
+**Konfigurasi RustFS produksi (2026-10).** RustFS `http://192.168.18.102:9000`, bucket `himatris`, hanya terjangkau dari LAN/VPN (bukan `.103` — host itu cuma lighttpd/Postgres). Console tidak diakses; perubahan config dilakukan lewat **admin API di port S3 yang sama** memakai access key admin — `GET /minio/admin/v3/info` (alias `/rustfs/admin/v3/info`). Subresource bucket **wajib** bentuk kanonik dengan `=` (`?policy=`, `?encryption=`, `?versions=&max-keys=`); tanpa `=` SigV4 gagal `403 SignatureDoesNotMatch`. Dua keputusan yang diambil:
+
+- **Default encryption bucket dihapus** (`DELETE /himatris?encryption=`) karena bucket punya default `AES256` (SSE-S3) sementara RustFS tidak punya KMS/`RUSTFS_SSE_S3_MASTER_KEY`, sehingga **setiap** `PutObject` gagal `400 InvalidRequest: SSE-S3 requires RUSTFS_SSE_S3_MASTER_KEY to be set to a base64-encoded 32-byte key when KMS is not configured`. Objek baru sekarang **tidak terenkripsi at-rest**; mengaktifkan lagi butuh `RUSTFS_SSE_S3_MASTER_KEY` di host RustFS, dan key itu tidak bisa dirotasi (menggantinya membuat objek lama tidak terbaca).
+- **Bucket policy anonymous-read** (`s3:GetObject` untuk `*` pada `arn:aws:s3:::himatris/*`) lewat `PUT /himatris?policy=`, supaya URL hasil upload bisa dibuka browser tanpa tanda tangan. `ListBucket` tetap ditolak `403`.
 
 ## 10. Keamanan & Observability
 

@@ -18,13 +18,18 @@
 # Network myorg-internal dibuat oleh stack ini (bukan external), jadi stack ini
 # bisa jalan sendirian tanpa docker-compose.db.yml.
 #
-# PITFALL: container yang sudah ada menyimpan referensi ke network ini. Kalau
-# network dihapus (mis. `down` stack yang membuatnya) sementara container lama
-# masih ada, start berikutnya gagal dengan:
+# PITFALL: container lama menyimpan referensi ke network ini (nama + network ID
+# + IP endpoint). Kalau network dihapus/dibuat ulang sementara container lama
+# masih ada, deploy berikutnya gagal dengan salah satu dari:
 #   "could not find a network matching network mode myorg-internal"
-# Obatnya: buang container lama, biar compose recreate:
-#   docker compose -f docker-compose.prod-service.yml up -d --force-recreate --remove-orphans
-# Kalau container itu milik project/stack lain, hapus manual dulu (docker rm -f).
+#   "failed to set up container networking: Address already in use"
+# Keduanya soal state container lama, BUKAN soal ports/expose. Lihat dulu siapa
+# yang nyangkut, lalu bersihkan:
+#   
+#   docker compose -f docker-compose.prod-service.yml down --remove-orphans
+#   docker rm -f <container-lama-yang-masih-tertinggal>
+#   docker compose -f docker-compose.prod-service.yml up -d --build
+# Kalau masih gagal, restart daemon Docker (IPAM/sandbox yang nyangkut).
 # =============================================================================
 
 services:

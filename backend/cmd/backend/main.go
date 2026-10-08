@@ -51,6 +51,31 @@ func main() {
 	}
 }
 
+// storageStaticHandler melayani URL relatif "/storage/<key>" dari disk. URL
+// bentuk itu berasal dari provider `local` (gokil: storage/local.go) dan masih
+// tersimpan di DB; berkasnya ada di volume yang sama, jadi handler ini tidak
+// boleh bergantung pada provider yang sedang aktif.
+//
+// "/storage/files" dan "/storage/folders" dikecualikan karena keduanya route
+// API sungguhan (app/storage/...).
+func storageStaticHandler(localPath string) func(http.Handler) http.Handler {
+	fileServer := http.StripPrefix("/storage/", http.FileServer(http.Dir(localPath)))
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			isStaticFile := r.Method == http.MethodGet &&
+				strings.HasPrefix(r.URL.Path, "/storage/") &&
+				r.URL.Path != "/storage/folders" &&
+				r.URL.Path != "/storage/files" &&
+				!strings.HasPrefix(r.URL.Path, "/storage/files/")
+			if isStaticFile {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func runServe() error {
 	settings, err := backend.LoadSettings()
 	if err != nil {
@@ -66,29 +91,15 @@ func runServe() error {
 		return err
 	}
 
-	// Local storage provider writes files to disk but the framework's router
-	// only matches fixed-arity paths, so uploaded files (logo, banner, selfie,
-	// etc.) need an explicit static file handler for the "/storage/" URLs
-	// returned by storageutil.Upload. S3/MinIO already returns absolute URLs
-	// served by the object storage itself, so this only applies to "local".
-	// "/storage/folders" is excluded because it's a real API route (app/storage/folders).
-	if strings.EqualFold(settings.Storage.Provider, "local") {
-		fileServer := http.StripPrefix("/storage/", http.FileServer(http.Dir(settings.Storage.LocalPath)))
-		app.Use(func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				isStaticFile := r.Method == http.MethodGet &&
-					strings.HasPrefix(r.URL.Path, "/storage/") &&
-					r.URL.Path != "/storage/folders" &&
-					r.URL.Path != "/storage/files" &&
-					!strings.HasPrefix(r.URL.Path, "/storage/files/")
-				if isStaticFile {
-					fileServer.ServeHTTP(w, r)
-					return
-				}
-				next.ServeHTTP(w, r)
-			})
-		})
-	}
+	// Upload yang dibuat saat provider masih "local" menyimpan URL relatif
+	// "/storage/<key>" di DB; URL itu masih dirender ke markup dan di-GET
+	// browser tanpa tanda tangan. Handler ini melayaninya dari disk
+	// (settings.Storage.LocalPath, default "storage" = volume /app/storage).
+	//
+	// Sengaja TIDAK digerbangi provider: berkas era local tetap ada di volume,
+	// jadi URL lama harus tetap jalan walau provider sekarang "s3". Upload baru
+	// dari provider s3 memakai URL absolut dan tidak lewat sini.
+	app.Use(storageStaticHandler(settings.Storage.LocalPath))
 
 	if app.DB != nil {
 		ctx := orm.WithDB(context.Background(), app.DB)
