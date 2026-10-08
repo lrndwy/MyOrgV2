@@ -2,21 +2,29 @@
 # MyOrg Production Stack — aplikasi saja (frontend, backend, OCR)
 # =============================================================================
 # Database PostgreSQL & object storage TIDAK di sini:
-#   - PostgreSQL : docker-compose.db.yml (stack terpisah, jalankan lebih dulu)
+#   - PostgreSQL : eksternal — diarahkan lewat GOKIL_DB_DSN / GOKIL_DB_HOST di
+#                  .env (managed DB, DB di host, atau stack docker-compose.db.yml
+#                  kalau memang mau Postgres jalan di Docker yang sama)
 #   - S3/MinIO   : eksternal (lihat GOKIL_STORAGE_* di .env)
 #
 # Usage:
-#   docker compose -f docker-compose.db.yml up -d            # DB dulu
 #   docker compose -f docker-compose.prod-service.yml up -d --build
 #
-# Semua service berbagi network myorg-internal. Network itu dideklarasikan di
-# sini DAN di docker-compose.db.yml (bukan external), jadi stack yang start
-# lebih dulu yang membuatnya dan stack lain ikut join.
-#
 # Tidak ada port yang dipublikasikan ke host. Service hanya bisa dijangkau dari
-# container lain di network yang sama, lewat nama service: frontend:3000,
+# container lain di network myorg-internal, lewat nama service: frontend:3000,
 # gokil:8080, ocr:8090. Reverse proxy (nginx/caddy) harus ikut join network
-# myorg-internal — bukan mengarah ke 127.0.0.1.
+# myorg-internal, bukan mengarah ke 127.0.0.1.
+#
+# Network myorg-internal dibuat oleh stack ini (bukan external), jadi stack ini
+# bisa jalan sendirian tanpa docker-compose.db.yml.
+#
+# PITFALL: container yang sudah ada menyimpan referensi ke network ini. Kalau
+# network dihapus (mis. `down` stack yang membuatnya) sementara container lama
+# masih ada, start berikutnya gagal dengan:
+#   "could not find a network matching network mode myorg-internal"
+# Obatnya: buang container lama, biar compose recreate:
+#   docker compose -f docker-compose.prod-service.yml up -d --force-recreate --remove-orphans
+# Kalau container itu milik project/stack lain, hapus manual dulu (docker rm -f).
 # =============================================================================
 
 services:
@@ -67,7 +75,9 @@ services:
       - internal
 
   # ── PostgreSQL ─────────────────────────────────────────────────────────────
-  # Dijalankan terpisah: docker-compose.db.yml
+  # Tidak ada di stack ini. Backend konek ke DB eksternal lewat GOKIL_DB_DSN
+  # (managed DB / DB di host). Kalau Postgres-nya mau di Docker, pakai stack
+  # terpisah docker-compose.db.yml — opsional, bukan syarat.
   #
   # ── Redis ──────────────────────────────────────────────────────────────────
   # Tidak dipakai (GOKIL_REDIS_ENABLED=false). gokil v0.9.1 tidak memakai Redis
@@ -100,7 +110,10 @@ volumes:
 
 networks:
   internal:
-    # Dipakai bersama stack DB (docker-compose.db.yml) — nama eksplisit supaya
-    # keduanya join network yang sama. Bukan external: kalau belum ada, stack
-    # ini yang membuatnya (dan sebaliknya).
+    # Dibuat stack ini sendiri (bukan external), tapi dengan nama tetap supaya
+    # reverse proxy / stack lain bisa join ke network yang sama — di compose
+    # mereka, deklarasikan network myorg-internal sebagai external.
+    # Kalau network belum ada, stack ini yang membuatnya; kalau sudah ada,
+    # container cuma ikut join.
+    name: myorg-internal
     driver: bridge

@@ -6,6 +6,9 @@ name: myorg-db
 # Dijalankan sendiri supaya app stack (docker-compose.prod-service.yml) bisa
 # di-rebuild/redeploy tanpa menyentuh database.
 #
+# Opsional: di production DB boleh eksternal (managed DB / Postgres di host) —
+# cukup set GOKIL_DB_DSN di .env, stack ini tidak perlu dijalankan.
+#
 # Usage (dari root repo):
 #   docker compose -f docker-compose.db.yml up -d      # jalankan dulu supaya
 #                                                      # DB siap saat app start
