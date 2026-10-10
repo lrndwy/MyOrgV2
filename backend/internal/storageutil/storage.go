@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"mime"
 	"path/filepath"
 	"strings"
@@ -37,6 +36,8 @@ func Provider() storage.Provider {
 	return provider
 }
 
+// Upload menyimpan data dan mengembalikan KEY-nya, bukan URL. Nilai itulah
+// yang ditulis ke DB (lihat path.go); URL publik dirakit saat response.
 func Upload(ctx context.Context, key string, data []byte, contentType string) (string, error) {
 	if provider == nil {
 		return "", fmt.Errorf("storage not initialized")
@@ -50,17 +51,7 @@ func Upload(ctx context.Context, key string, data []byte, contentType string) (s
 	if err := provider.Upload(ctx, key, bytes.NewReader(data), int64(len(data)), contentType); err != nil {
 		return "", err
 	}
-	return provider.URL(key)
-}
-
-func UploadReader(ctx context.Context, key string, r io.Reader, size int64, contentType string) (string, error) {
-	if provider == nil {
-		return "", fmt.Errorf("storage not initialized")
-	}
-	if err := provider.Upload(ctx, key, r, size, contentType); err != nil {
-		return "", err
-	}
-	return provider.URL(key)
+	return key, nil
 }
 
 func Key(prefix, filename string) string {

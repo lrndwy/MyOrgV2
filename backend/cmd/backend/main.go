@@ -3,13 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"backend"
 	_ "backend/app"
+	"backend/internal/response"
 	"backend/internal/seed"
 	"backend/internal/storageutil"
 	"backend/jobs"
@@ -51,29 +55,74 @@ func main() {
 	}
 }
 
-// storageStaticHandler melayani URL relatif "/storage/<key>" dari disk. URL
-// bentuk itu berasal dari provider `local` (gokil: storage/local.go) dan masih
-// tersimpan di DB; berkasnya ada di volume yang sama, jadi handler ini tidak
-// boleh bergantung pada provider yang sedang aktif.
+// storageStaticHandler melayani URL "/storage/<key>" dari disk ATAU dari
+// provider storage aktif (S3).
 //
+// Hanya untuk kompatibilitas nilai lama di DB (era provider `local`); upload
+// baru menyimpan key dan URL-nya dirakit ulang saat response:
+//  1. Berkas era provider `local` masih ada di volume, jadi URL lama
+//     "/storage/<key>" harus tetap jalan walau provider sekarang s3.
+//  2. Kalau berkasnya tidak ada di disk, ambil dari provider aktif.
+//
+// Urutan: disk dulu (murah), lalu provider.
 // "/storage/files" dan "/storage/folders" dikecualikan karena keduanya route
 // API sungguhan (app/storage/...).
 func storageStaticHandler(localPath string) func(http.Handler) http.Handler {
 	fileServer := http.StripPrefix("/storage/", http.FileServer(http.Dir(localPath)))
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			isStaticFile := r.Method == http.MethodGet &&
-				strings.HasPrefix(r.URL.Path, "/storage/") &&
-				r.URL.Path != "/storage/folders" &&
-				r.URL.Path != "/storage/files" &&
-				!strings.HasPrefix(r.URL.Path, "/storage/files/")
-			if isStaticFile {
+			key, ok := storageStaticKey(r.URL.Path)
+			if !ok || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// 1) Berkas lokal (era provider `local`).
+			if _, err := os.Stat(filepath.Join(localPath, filepath.FromSlash(key))); err == nil {
 				fileServer.ServeHTTP(w, r)
 				return
+			}
+			// 2) Provider aktif (S3): sajikan lewat origin aplikasi.
+			if p := storageutil.Provider(); p != nil {
+				if rc, err := p.Download(r.Context(), key); err == nil {
+					defer rc.Close()
+					writeStorageBody(w, r, key, rc)
+					return
+				}
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// storageStaticKey mengubah path request menjadi key storage, atau ok=false
+// kalau path itu bukan permintaan berkas (route API / traversal).
+func storageStaticKey(path string) (string, bool) {
+	if !strings.HasPrefix(path, "/storage/") {
+		return "", false
+	}
+	switch path {
+	case "/storage/files", "/storage/folders":
+		return "", false
+	}
+	if strings.HasPrefix(path, "/storage/files/") {
+		return "", false
+	}
+	key := strings.TrimPrefix(path, "/storage/")
+	if key == "" || strings.Contains(key, "..") || strings.HasPrefix(key, "/") {
+		return "", false
+	}
+	return key, true
+}
+
+func writeStorageBody(w http.ResponseWriter, r *http.Request, key string, rc io.Reader) {
+	if ct := mime.TypeByExtension(filepath.Ext(key)); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	_, _ = io.Copy(w, rc)
 }
 
 func runServe() error {
@@ -91,14 +140,16 @@ func runServe() error {
 		return err
 	}
 
-	// Upload yang dibuat saat provider masih "local" menyimpan URL relatif
-	// "/storage/<key>" di DB; URL itu masih dirender ke markup dan di-GET
-	// browser tanpa tanda tangan. Handler ini melayaninya dari disk
-	// (settings.Storage.LocalPath, default "storage" = volume /app/storage).
-	//
-	// Sengaja TIDAK digerbangi provider: berkas era local tetap ada di volume,
-	// jadi URL lama harus tetap jalan walau provider sekarang "s3". Upload baru
-	// dari provider s3 memakai URL absolut dan tidak lewat sini.
+	// DB menyimpan key storage, bukan URL. Dua middleware ini menjaga batas
+	// JSON: kolom file dinormalkan jadi key saat masuk, lalu dirakit jadi URL
+	// publik (base URL provider aktif) saat keluar.
+	app.Use(response.NormalizeStorageInputs)
+	app.Use(response.ExpandStorageURLs)
+
+	// Sisa URL relatif "/storage/<key>" era provider `local` di DB masih
+	// dirender ke markup dan di-GET browser tanpa tanda tangan. Handler ini
+	// melayaninya dari disk (settings.Storage.LocalPath, default "storage" =
+	// volume /app/storage) atau dari provider aktif kalau tidak ada di disk.
 	app.Use(storageStaticHandler(settings.Storage.LocalPath))
 
 	if app.DB != nil {

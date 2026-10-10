@@ -1049,7 +1049,7 @@ func (LetterService) CreateOutgoing(ctx context.Context, letter *models.Letter, 
 		if templateID > 0 {
 			tmpl, _ := orm.GetByID[models.LetterTemplate](txCtx, templateID)
 			if tmpl != nil && tmpl.TemplateURL != "" {
-				docx, err := storageutil.ReadURL(txCtx, tmpl.TemplateURL)
+				docx, err := storageutil.ReadStored(txCtx, tmpl.TemplateURL)
 				if err == nil {
 					repl := map[string]string{
 						"{NOMOR_SURAT}": letter.LetterCode,
@@ -1102,7 +1102,7 @@ func (LetterService) CreateIncoming(ctx context.Context, letter *models.Letter, 
 		letter.VariableValues = models.JSONField("{}")
 	}
 	if letter.AttachmentURL != "" && letter.LetterCode == "" {
-		data, err := storageutil.ReadURL(ctx, letter.AttachmentURL)
+		data, err := storageutil.ReadStored(ctx, letter.AttachmentURL)
 		if err == nil {
 			text, _, err := letterutil.ExtractText(ctx, data, letter.AttachmentURL)
 			if err == nil {
@@ -1557,7 +1557,7 @@ func (StorageService) DeleteFile(ctx context.Context, id int64) error {
 		return err
 	}
 	// Best-effort: hapus juga objek fisiknya dari storage provider.
-	if key := StorageKeyFromURL(f.FileURL); key != "" {
+	if key := storageutil.KeyFromStored(f.FileURL); key != "" {
 		if p := storageutil.Provider(); p != nil {
 			_ = p.Delete(ctx, key)
 		}

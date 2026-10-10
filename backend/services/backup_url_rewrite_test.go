@@ -2,25 +2,24 @@ package services
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
+
+	"backend/internal/storageutil"
 )
 
-// Regresi: restore dulu menyimpan kolom URL apa adanya, sehingga backup dari
-// era/deployment storage lain meninggalkan URL mati di database — file-nya
-// sudah di-upload ke provider aktif, tapi DB masih menunjuk base lama atau
-// "/storage/<key>" era provider local.
-func TestRewriteStorageURLs(t *testing.T) {
+// Kolom file di DB hanya berisi KEY storage; URL dirakit saat response
+// (storageutil.PublicURL). NormalizeStoragePaths dipakai di dua sisi backup:
+// export (data.json keluar sebagai path saja) dan restore (ZIP lama berisi URL
+// absolut tetap masuk sebagai key).
+func TestNormalizeStoragePaths(t *testing.T) {
 	t.Parallel()
-
-	const newBase = "http://192.168.18.102:9000/himatris"
-	urlFor := func(key string) (string, error) { return newBase + "/" + key, nil }
 
 	known := map[string]struct {
 	}{
 		"avatars/2026/10/x.png":  {},
 		"storage/2026/10/y.jpeg": {},
 	}
+	resolve := KnownKeyResolver(known)
 
 	avatarOf := func(t *testing.T, p map[string]json.RawMessage) string {
 		t.Helper()
@@ -34,76 +33,76 @@ func TestRewriteStorageURLs(t *testing.T) {
 
 	cases := []struct {
 		name string
-		url  string
+		val  string
 		want string
 	}{
 		{
 			// base lama + nama bucket lama (myorg), sekarang himatris
 			name: "base dan bucket era lama",
-			url:  "https://s3.teknostudio.id/myorg/avatars/2026/10/x.png",
-			want: newBase + "/avatars/2026/10/x.png",
+			val:  "https://s3.teknostudio.id/myorg/avatars/2026/10/x.png",
+			want: "avatars/2026/10/x.png",
 		},
 		{
-			// URL relatif provider local — selalu ditulis ulang
+			// URL relatif provider local — selalu dinormalkan
 			name: "relatif era local",
-			url:  "/storage/avatars/2026/10/x.png",
-			want: newBase + "/avatars/2026/10/x.png",
+			val:  "/storage/avatars/2026/10/x.png",
+			want: "avatars/2026/10/x.png",
 		},
 		{
 			// key-nya sendiri berawalan "storage/" (prefix upload admin)
 			name: "key berawalan storage",
-			url:  "http://192.168.18.102:9000/himatris/storage/2026/10/y.jpeg",
-			want: newBase + "/storage/2026/10/y.jpeg",
+			val:  "http://192.168.18.102:9000/himatris/storage/2026/10/y.jpeg",
+			want: "storage/2026/10/y.jpeg",
 		},
 		{
-			name: "sudah base aktif (idempoten)",
-			url:  newBase + "/avatars/2026/10/x.png",
-			want: newBase + "/avatars/2026/10/x.png",
+			name: "sudah key (idempoten)",
+			val:  "avatars/2026/10/x.png",
+			want: "avatars/2026/10/x.png",
 		},
 		{
 			// key tidak ada di ZIP -> bukan file milik storage kita
 			name: "URL eksternal tidak disentuh",
-			url:  "https://cdn.example.com/gambar/lain.png",
+			val:  "https://cdn.example.com/gambar/lain.png",
 			want: "https://cdn.example.com/gambar/lain.png",
 		},
 		{
 			// Disengaja: path-nya persis key yang ada di ZIP, jadi dianggap
-			// file storage kita (lihat catatan tradeoff di RewriteStorageURLs).
-			name: "mirror dengan path key kita ikut dialihkan",
-			url:  "https://cdn.example.com/avatars/2026/10/x.png",
-			want: newBase + "/avatars/2026/10/x.png",
+			// file storage kita (lihat catatan tradeoff di NormalizeStoragePaths).
+			name: "mirror dengan path key kita ikut dinormalkan",
+			val:  "https://cdn.example.com/avatars/2026/10/x.png",
+			want: "avatars/2026/10/x.png",
 		},
 		{
 			name: "data URL tidak disentuh",
-			url:  "data:image/png;base64,AAAA",
+			val:  "data:image/png;base64,AAAA",
 			want: "data:image/png;base64,AAAA",
 		},
 		{
 			name: "path traversal ditolak",
-			url:  "/storage/../../etc/passwd",
+			val:  "/storage/../../etc/passwd",
 			want: "/storage/../../etc/passwd",
 		},
 		{
 			name: "URL asing tidak disentuh",
-			url:  "https://contoh.id/halaman",
+			val:  "https://contoh.id/halaman",
 			want: "https://contoh.id/halaman",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			row := `[{"id":1,"username":"admin","email":"a@b.c","avatar_url":"` + tc.url + `"}]`
+			row := `[{"id":1,"username":"admin","email":"a@b.c","avatar_url":"` + tc.val + `"}]`
 			p := map[string]json.RawMessage{"users": json.RawMessage(row)}
 
-			n, err := rewriteStorageURLs(p, known, urlFor)
+			n, err := NormalizeStoragePaths(p, resolve)
 			if err != nil {
-				t.Fatalf("rewrite: %v", err)
+				t.Fatalf("normalize: %v", err)
 			}
 			if got := avatarOf(t, p); got != tc.want {
 				t.Fatalf("avatar_url = %q, mau %q", got, tc.want)
 			}
 			wantN := 0
-			if tc.want != tc.url {
+			if tc.want != tc.val {
 				wantN = 1
 			}
 			if n != wantN {
@@ -122,18 +121,19 @@ func TestRewriteStorageURLs(t *testing.T) {
 	}
 }
 
-func TestRewriteStorageURLsRewritesEveryURLColumn(t *testing.T) {
+// Semua kolom berakhiran _url (bukan hanya "url") harus ikut dinormalkan, dan
+// tabel null tidak menggagalkan apa pun.
+func TestNormalizeStoragePathsCoversEveryURLColumn(t *testing.T) {
 	t.Parallel()
 
-	urlFor := func(key string) (string, error) { return "https://s3.example.com/himatris/" + key, nil }
 	p := map[string]json.RawMessage{
 		"letters": json.RawMessage(`[{"id":1,"title":"Surat","file_url":"/storage/letters/1.docx"}]`),
 		"events":  json.RawMessage(`null`),
 	}
 
-	n, err := rewriteStorageURLs(p, nil, urlFor)
+	n, err := NormalizeStoragePaths(p, KnownKeyResolver(nil))
 	if err != nil {
-		t.Fatalf("rewrite: %v", err)
+		t.Fatalf("normalize: %v", err)
 	}
 	if n != 1 {
 		t.Fatalf("changed = %d, mau 1", n)
@@ -143,7 +143,7 @@ func TestRewriteStorageURLsRewritesEveryURLColumn(t *testing.T) {
 	if err := json.Unmarshal(p["letters"], &items); err != nil {
 		t.Fatal(err)
 	}
-	if items[0]["file_url"] != "https://s3.example.com/himatris/letters/1.docx" {
+	if items[0]["file_url"] != "letters/1.docx" {
 		t.Fatalf("file_url = %v", items[0]["file_url"])
 	}
 	if items[0]["title"] != "Surat" {
@@ -151,27 +151,26 @@ func TestRewriteStorageURLsRewritesEveryURLColumn(t *testing.T) {
 	}
 }
 
-// Provider belum siap (URL gagal dibangun) tidak boleh menggagalkan restore.
-func TestRewriteStorageURLsWithoutProvider(t *testing.T) {
+// ZIP tanpa file storage (knownKeys kosong) tetap boleh menormalkan bentuk
+// "/storage/<key>" — bentuk itu hanya mungkin dari provider local.
+func TestNormalizeStoragePathsWithoutKnownKeys(t *testing.T) {
 	t.Parallel()
 
 	p := map[string]json.RawMessage{"users": json.RawMessage(`[{"avatar_url":"/storage/a.png"}]`)}
-	n, err := rewriteStorageURLs(p, nil, func(string) (string, error) {
-		return "", fmt.Errorf("storage not initialized")
-	})
+	n, err := NormalizeStoragePaths(p, KnownKeyResolver(nil))
 	if err != nil {
-		t.Fatalf("rewrite: %v", err)
+		t.Fatalf("normalize: %v", err)
 	}
-	if n != 0 {
-		t.Fatalf("changed = %d, mau 0", n)
+	if n != 1 {
+		t.Fatalf("changed = %d, mau 1", n)
 	}
 
 	var items []map[string]any
 	if err := json.Unmarshal(p["users"], &items); err != nil {
 		t.Fatal(err)
 	}
-	if items[0]["avatar_url"] != "/storage/a.png" {
-		t.Fatalf("avatar_url berubah: %v", items[0]["avatar_url"])
+	if items[0]["avatar_url"] != "a.png" {
+		t.Fatalf("avatar_url = %v", items[0]["avatar_url"])
 	}
 }
 
@@ -183,7 +182,7 @@ func TestMatchKnownStorageKey(t *testing.T) {
 		"avatars/2026/10/x.png": {},
 	}
 	cases := []struct {
-		url     string
+		val     string
 		wantKey string
 		wantOK  bool
 	}{
@@ -193,12 +192,13 @@ func TestMatchKnownStorageKey(t *testing.T) {
 		{"https://cdn.example.com/gambar/lain.png", "", false},
 		{"/storage/", "", false},
 		{"", "", false},
-		{"avatars/2026/10/x.png", "", false},
+		// key yang tidak ada di ZIP: bukan file milik backup ini.
+		{"https://cdn.example.com/avatars/2026/10/lain.png", "", false},
 	}
 	for _, tc := range cases {
-		key, ok := matchKnownStorageKey(tc.url, known)
+		key, ok := matchKnownStorageKey(tc.val, known)
 		if ok != tc.wantOK || key != tc.wantKey {
-			t.Fatalf("matchKnownStorageKey(%q) = (%q,%v), mau (%q,%v)", tc.url, key, ok, tc.wantKey, tc.wantOK)
+			t.Fatalf("matchKnownStorageKey(%q) = (%q,%v), mau (%q,%v)", tc.val, key, ok, tc.wantKey, tc.wantOK)
 		}
 	}
 }
@@ -207,62 +207,67 @@ func TestMatchKnownStorageKey(t *testing.T) {
 // key lama hanya melepas segmen bucket kalau namanya sama dengan bucket aktif,
 // jadi URL era lama menghasilkan key salah ("myorg/avatars/...") dan file-nya
 // tidak ditemukan saat backup.
-func TestStorageKeyCandidates(t *testing.T) {
+func TestKeyCandidates(t *testing.T) {
 	t.Setenv("GOKIL_STORAGE_BASE_URL", "http://192.168.18.102:9000/himatris")
 	t.Setenv("GOKIL_STORAGE_BUCKET", "himatris")
 
 	cases := []struct {
 		name string
-		url  string
+		val  string
 		want []string
 	}{
 		{
+			name: "sudah key",
+			val:  "avatars/2026/10/x.png",
+			want: []string{"avatars/2026/10/x.png"},
+		},
+		{
 			name: "base aktif",
-			url:  "http://192.168.18.102:9000/himatris/avatars/2026/10/x.png",
+			val:  "http://192.168.18.102:9000/himatris/avatars/2026/10/x.png",
 			want: []string{"avatars/2026/10/x.png"},
 		},
 		{
 			// inilah kasus produksi: bucket lama "myorg"
 			name: "bucket era lama",
-			url:  "https://s3.teknostudio.id/myorg/avatars/2026/10/x.png",
+			val:  "https://s3.teknostudio.id/myorg/avatars/2026/10/x.png",
 			want: []string{"avatars/2026/10/x.png", "myorg/avatars/2026/10/x.png"},
 		},
 		{
 			name: "relatif era local",
-			url:  "/storage/avatars/2026/10/x.png",
+			val:  "/storage/avatars/2026/10/x.png",
 			want: []string{"avatars/2026/10/x.png"},
 		},
 		{
 			name: "virtual host AWS tanpa segmen bucket",
-			url:  "https://myorg.s3.amazonaws.com/avatars/2026/10/x.png",
+			val:  "https://myorg.s3.amazonaws.com/avatars/2026/10/x.png",
 			want: []string{"avatars/2026/10/x.png"},
 		},
 		{
 			name: "key berawalan storage",
-			url:  "http://192.168.18.102:9000/himatris/storage/2026/10/y.jpeg",
+			val:  "http://192.168.18.102:9000/himatris/storage/2026/10/y.jpeg",
 			want: []string{"storage/2026/10/y.jpeg"},
 		},
 		{
 			name: "traversal ditolak",
-			url:  "/storage/../../etc/passwd",
+			val:  "/storage/../../etc/passwd",
 			want: nil,
 		},
 		{
 			name: "bukan URL storage",
-			url:  "https://contoh.id/halaman",
+			val:  "https://contoh.id/halaman",
 			want: []string{"halaman"},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := StorageKeyCandidates(tc.url)
+			got := storageutil.KeyCandidates(tc.val)
 			if len(got) != len(tc.want) {
-				t.Fatalf("candidates(%q) = %v, mau %v", tc.url, got, tc.want)
+				t.Fatalf("candidates(%q) = %v, mau %v", tc.val, got, tc.want)
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {
-					t.Fatalf("candidates(%q) = %v, mau %v", tc.url, got, tc.want)
+					t.Fatalf("candidates(%q) = %v, mau %v", tc.val, got, tc.want)
 				}
 			}
 		})
@@ -290,5 +295,8 @@ func TestCollectFileRefsFindsLegacyBucketURLs(t *testing.T) {
 	}
 	if refs[0].Keys[0] != "avatars/2026/10/x.png" {
 		t.Fatalf("kandidat utama = %q, mau tanpa segmen bucket", refs[0].Keys[0])
+	}
+	if refs[0].Value != "https://s3.teknostudio.id/myorg/avatars/2026/10/x.png" {
+		t.Fatalf("nilai asli = %q", refs[0].Value)
 	}
 }

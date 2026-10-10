@@ -70,7 +70,7 @@ Modul domain backend: **model → service → route handler**. Handler hanya bin
 - Transaksi kritis (approval izin, counter surat): `*sql.Tx` + raw SQL (+ `FOR UPDATE`) sampai `orm.WithTx` di-patch (lihat `DESIGN.md` §0.1).
 - Permission: panggil helper `RequirePermission` di **awal** setiap handler sensitif — jangan hardcode role string `"Admin"`.
 - Response: envelope proyek `{ "success", "message", "data"|"errors" }` (PRD §5.0), bukan envelope mentah gokil.
-- Upload: MinIO via `storage.Provider`; simpan **URL** di DB — jangan base64.
+- Upload: MinIO via `storage.Provider`; simpan **key** di DB — jangan base64, jangan URL. `storageutil.Upload` mengembalikan key, dan `response.NormalizeStorageInputs` / `ExpandStorageURLs` (`cmd/backend/main.go`) menormalkan kolom `url`/`*_url` di body JSON masuk/keluar. Jangan merakit URL di handler; baca file tersimpan dengan `storageutil.ReadStored`.
 - Composite unique / index khusus: SQL manual di `migrations/`.
 - Path statis (`/users/me`) harus terdaftar sebelum dinamis (`/users/:id`) — urutan router linear.
 
@@ -121,7 +121,7 @@ Checklist:
 2. Lint/typecheck/build frontend lulus (jika ada perubahan UI).
 3. Endpoint baru terdaftar di `app/register.go` dan terproteksi permission yang benar.
 4. Perubahan skema/desain penting sudah di `DESIGN.md`.
-5. Upload memakai storage URL, bukan base64.
+5. Upload menyimpan **key** storage di DB (bukan base64, bukan URL absolut); URL dirakit dari `GOKIL_STORAGE_BASE_URL` saat response.
 
 Tulis test minimal untuk service: approval perizinan, generate kode surat, counter surat, import user.
 

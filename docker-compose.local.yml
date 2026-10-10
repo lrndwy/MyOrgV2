@@ -1,0 +1,52 @@
+# =============================================================================
+# MyOrg — override untuk menjalankan stack production di mesin lokal
+# =============================================================================
+# docker-compose.prod-service.yml sengaja tidak mempublikasikan port (akses
+# hanya lewat network myorg-internal + reverse proxy). Di lokal tidak ada
+# reverse proxy, jadi override ini:
+#   1. membuka frontend & gokil di loopback,
+#   2. menjalankan RustFS lokal (bucket `myorg`) dan mengarahkan storage ke
+#      sana, supaya upload bisa diuji tanpa menyentuh RustFS produksi.
+#
+# Usage:
+#   docker compose -f docker-compose.prod-service.yml -f docker-compose.local.yml up -d --build
+#
+# Hanya loopback (127.0.0.1) — tidak terekspos ke LAN.
+#
+# Catatan storage:
+#   GOKIL_STORAGE_BASE_URL di sini menimpa nilai .env dan HARUS bisa dijangkau
+#   BROWSER (URL file dirender ke markup), jadi pakai 127.0.0.1:9000 — bukan
+#   nama service `rustfs` yang hanya resolve di dalam network Docker.
+#   Bucket + policy anonymous-read disiapkan sekali (lihat README backend);
+#   tanpa itu gambar 403 walau upload sukses.
+# =============================================================================
+
+services:
+  frontend:
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  gokil:
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      GOKIL_STORAGE_ENDPOINT: http://rustfs:9000
+      GOKIL_STORAGE_BASE_URL: http://127.0.0.1:9000/myorg
+      GOKIL_STORAGE_USE_SSL: "false"
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    command: /data
+    environment:
+      RUSTFS_ACCESS_KEY: ${GOKIL_STORAGE_ACCESS_KEY_ID:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${GOKIL_STORAGE_SECRET_ACCESS_KEY:-rustfsadmin}
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - rustfs_data:/data
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  rustfs_data:

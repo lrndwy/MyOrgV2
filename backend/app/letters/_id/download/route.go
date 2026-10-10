@@ -40,7 +40,7 @@ func GET(ctx *views.Context) error {
 			http.Redirect(c.Writer, c.Request, url, http.StatusFound)
 			return nil
 		}
-		data, err := storageutil.ReadURL(c.Request.Context(), url)
+		data, err := storageutil.ReadStored(c.Request.Context(), url)
 		if err != nil {
 			return c.Error(500, err.Error())
 		}

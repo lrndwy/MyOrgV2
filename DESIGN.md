@@ -151,7 +151,7 @@ Setiap tabel di PRD §4 dipetakan ke model Go yang embed `orm.BaseModel` (`ID in
 | `birth_date` | date, optional | |
 | `hometown` | string, optional | |
 | `phone` | string, optional | |
-| `avatar_url` | string, optional | URL MinIO |
+| `avatar_url` | string, optional | key storage (`avatars/...`), URL dirakit dari env |
 | `division_id` | FK → divisions | |
 | `role_id` | FK → roles | |
 | `status` | enum | `active` \| `inactive` \| `deleted` |
@@ -304,7 +304,7 @@ Jalankan sebagai proses terpisah: `go run ./cmd/backend cron`. Set `Logger`/`OnE
 
 ### 6.2 Absensi & Perizinan
 - Absensi hanya jika `event.status == 'ongoing'`.
-- Upload selfie & signature ke MinIO; simpan **URL** di DB.
+- Upload selfie & signature ke MinIO; simpan **key** di DB (URL dirakit saat response, §9).
 - Approval: update `permission_requests` + `attendances` dalam **satu transaksi** (`*sql.Tx` + raw SQL sampai `WithTx` di-patch).
 - **Satu kali per event:** absen ditolak jika sudah ada attendance ATAU pengajuan izin pending/approved; pengajuan izin ditolak jika sudah tercatat hadir/izin ATAU ada pengajuan pending/approved (izin yang ditolak boleh diajukan ulang). Guard di `AttendanceService.Submit` & `PermissionRequestService.Create`.
 - `GET /attendance/permission_requests` (admin) mengembalikan **semua status** + ringkasan `user`/`event` (`ListAllDetailed`); `GET /permission_requests/me` menyertakan ringkasan `event` (`ListMineDetailed`). `DELETE /attendance/permission_requests/:id` (gate `attendance.approve`) menghapus pengajuan; attendance turunan review (permitted/rejected) ikut dihapus dalam satu transaksi — attendance hasil check-in (`present`) tidak disentuh.
@@ -363,6 +363,12 @@ Parse CSV/XLSX → validasi → bulk insert → email async.
 - Replace melewati baris `activity_log` yang `user_id`-nya tidak ada di payload `users` (user sudah dihapus / orphan FK). Merge memakai `skipActivityLogMerge`: cek keberadaan user di DB, karena tabel `user` tidak dikosongkan sehingga user lokal yang tidak ikut ZIP tetap valid.
 - Setelah restore (kedua mode): `SyncMissingPermissions` + `SyncMissingSeedData` (permission/kategori baru yang belum ada di ZIP lama).
 - Storage objek **tidak** dihapus massal — hanya di-upload ulang per key.
+- **URL storage dinormalkan ke provider aktif** — backup dari era/deployment lain membawa URL absolut base lama (`https://s3.teknostudio.id/myorg/...`) atau `/storage/<key>` era provider local. Tanpa normalisasi, file-nya di-upload ke provider aktif tapi DB tetap menunjuk alamat mati. Karena itu:
+  - **Export** memakai `storageutil.KeyCandidates` untuk menurunkan kandidat key dari nilai lama (URL base aktif → key; `/storage/<key>` → key; path-style `<host>/<bucket>/<key>` → key tanpa segmen bucket **apa pun nama bucket-nya**; virtual-host AWS → path; nilai yang sudah key → apa adanya). Kandidat dicoba berurutan (`storageutil.ReadStored`, lalu baca dari disk per kandidat) dan yang benar-benar ada yang dipakai — bukan menebak. Sebelumnya segmen bucket hanya dilepas kalau namanya sama dengan `GOKIL_STORAGE_BUCKET` aktif, sehingga setelah bucket berubah (`myorg` → `himatris`) file lama tidak ditemukan dan hilang dari ZIP (`files_missing`).
+  - **data.json hanya memuat key**: `services.NormalizeStoragePaths(payload, resolve)` menulis ulang kolom file memakai hasil resolusi di atas (nilai apa adanya di DB → key yang benar-benar terbaca). Jadi ZIP tidak lagi membawa base URL deployment ini, dan backup dari era `local` pun keluar sebagai path.
+  - **Restore** memanggil `services.NormalizeStoragePaths(payload, services.KnownKeyResolver(knownKeys))` sebelum menulis DB; `knownKeys` = key yang benar-benar ada di dalam ZIP (bukti eksak file itu milik sistem ini, sekaligus penjaga agar URL asing tidak ikut ditulis ulang). URL `/storage/<key>` selalu dinormalkan (bentuk itu hanya mungkin dari provider local). Jumlah kolom yang diubah dilaporkan sebagai `urls_rewritten` di response. Berlaku sama untuk mode `replace` dan `merge` — keduanya menerima payload yang sudah berisi path.
+  - Tradeoff disengaja: URL absolut yang key-nya ada di ZIP dianggap milik sistem, jadi mirror/CDN yang menyalin path storage kita ikut dinormalkan — kerugiannya kecil (file-nya memang ada di storage kita) dan jauh lebih ringan daripada URL base lama yang dibiarkan mati. Tanpa ZIP, hanya `/storage/...` yang dinormalkan.
+  - Kolom yang dikenali: `url` atau berakhiran `_url`. Nilai `data:` dan string kosong dilewati.
 - Browser memanggil `POST /backup` lewat rewrite Next `/api/backend/*`. Rewrite di-proksi server Next dengan dua batas default yang mematikan restore ZIP besar — keduanya diatur di `next.config.ts`:
   - `experimental.proxyClientMaxBodySize` (default **10MB**): body dipotong di 10MB lalu stream ditutup, sisa request menggantung sampai timeout; browser menerima body teks `Internal Server Error` (bukan envelope JSON) → `res.json()` di frontend gagal. Dipasang 512MB.
   - `experimental.proxyTimeout` (default **30 detik**). Dipasang 10 menit.
@@ -418,7 +424,15 @@ backups/{date}-{id}.zip
   - Tampilan default browser storage hanya menampilkan isi root; isi folder dimuat saat folder dibuka.
 - Web anggota: tidak ada halaman storage terpisah.
 - Wiring: `storageutil.Init(settings.Storage)` sekali di bootstrap; jangan buat client per request. Provider `local` tetap dari gokil, provider `s3` dari `internal/storageutil/s3.go` (§9.1).
-- **URL relatif `/storage/<key>` dari era provider `local`** tetap dilayani dari disk oleh handler statis di `cmd/backend/main.go` (`http.FileServer` atas `settings.Storage.LocalPath`, default `storage` = volume `/app/storage`), **tanpa** digerbangi provider — berkas era itu masih ada di volume, jadi URL lama tidak boleh mati setelah pindah ke s3. Upload baru provider s3 memakai URL absolut dan tidak lewat handler ini. Frontend meneruskan `/storage/*` ke backend lewat rewrite `next.config.ts`, jadi URL relatif tetap jalan di mode proxy maupun direct-API. `/storage/files` dan `/storage/folders` dikecualikan karena route API.
+- **DB hanya menyimpan KEY storage** (`events/banners/2026/10/1760000000-banner.jpg`), bukan URL — jadi pindah domain/IP/port/nama bucket tidak merusak data lama, cukup ubah `GOKIL_STORAGE_BASE_URL`. Batasnya dijaga di dua middleware (`cmd/backend/main.go`), bukan di tiap handler:
+  - `response.NormalizeStorageInputs` (masuk): kolom `url` / `*_url` di body JSON dinormalkan ke key. Klien sering mengirim balik URL yang baru diterimanya dari response (form edit memuat record lalu menyimpan apa adanya). Body non-JSON (multipart upload, ZIP) tidak disentuh; body tanpa kolom file diteruskan tanpa decode ulang.
+  - `response.ExpandStorageURLs` (keluar): key dirakit jadi URL publik (`storageutil.PublicURL` = provider aktif / `GOKIL_STORAGE_BASE_URL`). Response non-JSON (ZIP backup, berkas dari `/storage/*`, unduhan docx) dilewatkan tanpa di-buffer; decode memakai `json.Number` supaya presisi int64/uang tidak rusak.
+  - Sisi tulis lain (`storageutil.Upload`, `UploadReader`) juga mengembalikan **key**, jadi `models.*URL` selalu berisi key. Pembaca memakai `storageutil.ReadStored` (key → provider, `/storage/<key>` → disk, URL absolut → GET langsung untuk data era lama).
+  - Handler/route **tidak** boleh merakit URL sendiri (`provider.URL`) dan tidak boleh menulis URL absolut ke DB. `renderApiBase()`/`getApiBase()` hanya untuk URL API, bukan URL file.
+- **Nilai lama di DB dinormalkan** oleh migrasi `20261010000000_storage_paths_in_db.sql` (URL absolut + `/storage/<key>` → key). Rollback sengaja kosong: base URL lama tidak tersimpan lagi.
+- **Bootstrap bucket**: `go run ./cmd/s3setup` (dari `backend/`) membuat bucket + policy anonymous-read lalu membuktikan objek bisa dibaca tanpa tanda tangan. Aplikasi tidak pernah membuat bucket sendiri, jadi ini langkah sekali jalan tiap deployment storage baru.
+- **Stack lokal**: `docker compose -f docker-compose.prod-service.yml -f docker-compose.local.yml up -d --build` menjalankan RustFS lokal (bucket `myorg`, volume `rustfs_data`) dan mengarahkan storage ke sana, jadi upload bisa diuji tanpa menyentuh RustFS produksi. `GOKIL_STORAGE_BASE_URL` di override itu memakai `127.0.0.1:9000` karena URL file dirender **browser**, bukan diresolve di network Docker.
+- **URL relatif `/storage/<key>` dari era provider `local`** tetap dilayani oleh handler statis di `cmd/backend/main.go` (`http.FileServer` atas `settings.Storage.LocalPath`, default `storage` = volume `/app/storage`), dengan fallback ke provider aktif kalau berkasnya tidak ada di disk. Frontend meneruskan `/storage/*` ke backend lewat rewrite `next.config.ts`, jadi URL relatif tetap jalan di mode proxy maupun direct-API. `/storage/files` dan `/storage/folders` dikecualikan karena route API.
 
 ### 9.1 S3 non-AWS di balik reverse proxy (Cloudflare)
 
@@ -427,7 +441,7 @@ backups/{date}-{id}.zip
 Konsekuensi konfigurasi endpoint non-AWS:
 
 - Endpoint non-AWS selalu path-style, jadi `GOKIL_STORAGE_BASE_URL` **wajib** memuat bucket (`https://s3.example.com/myorg`). Tanpa segmen bucket, URL hasil upload salah dan file 403 saat dibuka.
-- URL disimpan mentah di DB dan dirender langsung oleh browser (`<img>`, `<a>`), sementara `storageutil.ReadURL` mengambilnya dengan GET **tanpa** tanda tangan. Bucket karena itu harus **anonymous read** (bucket policy `s3:GetObject` untuk `*`); kalau privat, upload sukses tapi semua gambar & unduhan 403.
+- URL dirakit dari key saat response (`storageutil.PublicURL`) dan dirender langsung oleh browser (`<img>`, `<a>`), sementara `storageutil.ReadStored` mengambil objek lewat GET **bertanda tangan** (provider S3) — jadi unduhan internal tidak butuh bucket publik. Bucket tetap sebaiknya **anonymous read** (bucket policy `s3:GetObject` untuk `*`) supaya URL yang dirender browser bisa dibuka tanpa tanda tangan; kalau privat, upload sukses tapi gambar di halaman 403.
 
 **Konfigurasi RustFS produksi (2026-10).** RustFS `http://192.168.18.102:9000`, bucket `himatris`, hanya terjangkau dari LAN/VPN (bukan `.103` — host itu cuma lighttpd/Postgres). Console tidak diakses; perubahan config dilakukan lewat **admin API di port S3 yang sama** memakai access key admin — `GET /minio/admin/v3/info` (alias `/rustfs/admin/v3/info`). Subresource bucket **wajib** bentuk kanonik dengan `=` (`?policy=`, `?encryption=`, `?versions=&max-keys=`); tanpa `=` SigV4 gagal `403 SignatureDoesNotMatch`. Dua keputusan yang diambil:
 
@@ -462,7 +476,7 @@ Konsekuensi konfigurasi endpoint non-AWS:
 | Login identifier | Username utama; email fallback |
 | Auth | JWT + httpOnly cookie (+ token di body) |
 | Dual role | System admin + custom Role/Permission |
-| File upload | MinIO (S3) + URL di DB |
+| File upload | MinIO (S3) + key di DB (URL dirakit dari env, §9) |
 | Organization settings | Singleton |
 | Transaksi kritis | `*sql.Tx` + FOR UPDATE sampai WithTx patched |
 | ORM access | `orm.*` + request context; larang `models.*` scaffold |

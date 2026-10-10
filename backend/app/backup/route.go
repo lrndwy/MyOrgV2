@@ -48,19 +48,8 @@ func exportBackup(ctx *views.Context) error {
 	if err != nil {
 		return ctx.Error(500, err.Error())
 	}
-	raw, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return ctx.Error(500, err.Error())
-	}
 	buf := &bytes.Buffer{}
 	zw := zip.NewWriter(buf)
-	w, err := zw.Create("data.json")
-	if err != nil {
-		return ctx.Error(500, err.Error())
-	}
-	if _, err := w.Write(raw); err != nil {
-		return ctx.Error(500, err.Error())
-	}
 
 	written := map[string]bool{}
 	type missingFile struct {
@@ -70,6 +59,11 @@ func exportBackup(ctx *views.Context) error {
 	missing := []missingFile{}
 	storageRoot := storageRootPath()
 
+	// resolved memetakan nilai kolom apa adanya di DB -> key yang benar-benar
+	// berhasil dibaca. Dipakai dua kali: sebagai nama entri ZIP dan untuk
+	// menulis ulang data.json agar tidak lagi membawa base URL deployment ini.
+	resolved := map[string]string{}
+
 	// 1) Semua file yang dirujuk kolom URL di database — bekerja untuk
 	//    provider lokal maupun S3/MinIO (dibaca lewat URL-nya). URL bisa berasal
 	//    dari era storage lain (bucket/base URL berbeda), jadi tiap kandidat key
@@ -78,8 +72,9 @@ func exportBackup(ctx *views.Context) error {
 		var content []byte
 		var key string
 
-		// Baca lewat URL-nya dulu (butuh provider bisa dijangkau).
-		if data, err := storageutil.ReadURL(reqCtx, ref.URL); err == nil {
+		// Baca lewat nilai tersimpannya dulu (key -> provider, URL absolut ->
+		// GET langsung, /storage/<key> -> disk).
+		if data, err := storageutil.ReadStored(reqCtx, ref.Value); err == nil {
 			content, key = data, ref.Keys[0]
 		}
 		// Fallback: cari langsung di disk untuk tiap kandidat key. Ini yang
@@ -97,9 +92,10 @@ func exportBackup(ctx *views.Context) error {
 		if content == nil {
 			// File dirujuk database tapi tidak ditemukan di storage —
 			// catat di manifest agar terlihat, jangan gagalkan backup.
-			missing = append(missing, missingFile{Key: ref.Keys[0], URL: ref.URL})
+			missing = append(missing, missingFile{Key: ref.Keys[0], URL: ref.Value})
 			continue
 		}
+		resolved[ref.Value] = key
 
 		name := "storage/" + key
 		if written[name] {
@@ -114,7 +110,38 @@ func exportBackup(ctx *views.Context) error {
 		}
 	}
 
-	// 2) Sapu direktori storage lokal (provider lokal) untuk file yang tidak
+	// 2) data.json hanya memuat key storage. Nilai absolut era lama ditulis
+	//    ulang memakai hasil resolusi di atas (key yang benar-benar terbaca),
+	//    jadi ZIP tidak membawa base URL deployment ini dan restore di
+	//    deployment/domain lain tetap benar. Nilai yang tidak teresolusi
+	//    dibiarkan utuh (tautan luar) dan tetap tercatat di manifest.
+	rawPayload := map[string]json.RawMessage{}
+	for k, v := range payload {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return ctx.Error(500, err.Error())
+		}
+		rawPayload[k] = b
+	}
+	if _, err := services.NormalizeStoragePaths(rawPayload, func(value string) (string, bool) {
+		key, ok := resolved[value]
+		return key, ok
+	}); err != nil {
+		return ctx.Error(500, err.Error())
+	}
+	raw, err := json.MarshalIndent(rawPayload, "", "  ")
+	if err != nil {
+		return ctx.Error(500, err.Error())
+	}
+	w, err := zw.Create("data.json")
+	if err != nil {
+		return ctx.Error(500, err.Error())
+	}
+	if _, err := w.Write(raw); err != nil {
+		return ctx.Error(500, err.Error())
+	}
+
+	// 3) Sapu direktori storage lokal (provider lokal) untuk file yang tidak
 	//    terekam di kolom URL mana pun.
 	_ = filepath.Walk(storageRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -143,7 +170,7 @@ func exportBackup(ctx *views.Context) error {
 		return nil
 	})
 
-	// 3) Manifest: transparan soal apa yang ikut dan apa yang tidak ditemukan,
+	// 4) Manifest: transparan soal apa yang ikut dan apa yang tidak ditemukan,
 	//    supaya file hilang tidak lolos tanpa terdeteksi.
 	manifest := map[string]any{
 		"files_included": len(written),
@@ -245,13 +272,13 @@ func importBackup(ctx *views.Context) error {
 		if err := json.Unmarshal(dataJSON, &payload); err != nil {
 			return ctx.Error(400, "data.json tidak valid: "+err.Error())
 		}
-		// URL di backup bisa menunjuk base storage deployment/era lain (atau
-		// "/storage/<key>" era provider local), padahal file-nya baru saja
-		// di-upload ke provider aktif. Samakan dulu, kalau tidak gambar &
-		// lampiran hasil restore menunjuk alamat mati.
-		urlsRewritten, err = services.RewriteStorageURLs(payload, knownKeys)
+		// Kolom file di DB hanya berisi key. ZIP lama masih membawa URL
+		// absolut (atau "/storage/<key>" era provider local); keduanya
+		// dinormalkan ke key dulu, jadi restore dari backup era/domain lain
+		// tetap masuk sebagai path dan URL-nya dirakit dari env saat response.
+		urlsRewritten, err = services.NormalizeStoragePaths(payload, services.KnownKeyResolver(knownKeys))
 		if err != nil {
-			return ctx.Error(400, "normalisasi URL storage: "+err.Error())
+			return ctx.Error(400, "normalisasi path storage: "+err.Error())
 		}
 		if mode == services.RestoreMerge {
 			dbStats, skipped, err = services.BackupService{}.RestoreJSONMerge(reqCtx, payload)

@@ -28,7 +28,7 @@ func GET(ctx *views.Context) error {
 		}
 		var vars []string
 		if t.TemplateURL != "" {
-			data, err := storageutil.ReadURL(c.Request.Context(), t.TemplateURL)
+			data, err := storageutil.ReadStored(c.Request.Context(), t.TemplateURL)
 			if err == nil {
 				vars, _ = letterutil.ListPlaceholders(data)
 			}
